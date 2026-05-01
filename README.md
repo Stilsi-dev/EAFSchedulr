@@ -42,7 +42,7 @@ Convert your Enrollment Assessment Form (EAF) PDF into a Google Calendar-compati
 1. Activate your virtual environment (see step 3 above)
 2. Start the Flask development server:
    ```bash
-   python app.py
+   python run.py
    ```
 3. Open your browser and go to `http://127.0.0.1:5000`
 
@@ -80,15 +80,38 @@ Your calendar will include:
 
 ```text
 EAFtoGCAL_AH/
-├── app.py
-├── README.md
-├── requirements.txt
+├── app/                           # Main application package
+│   ├── __init__.py               # App factory and initialization
+│   ├── config.py                 # Configuration and constants
+│   ├── models.py                 # Data models (Event dataclass)
+│   ├── utils.py                  # Utility functions for text and time processing
+│   ├── routes.py                 # HTTP route handlers
+│   └── services/
+│       ├── parser.py             # PDF parsing and validation
+│       └── calendar.py           # Calendar generation and preview formatting
 ├── static/
-│   ├── app.js
-│   └── styles.css
-└── templates/
-   └── index.html
+│   ├── app.js                    # Client-side JavaScript
+│   └── styles.css                # Styling
+├── templates/
+│   └── index.html                # HTML template
+├── run.py                        # Application entry point
+├── README.md                     # This file
+└── requirements.txt              # Python dependencies
 ```
+
+### Architecture
+
+The application follows a **modular, layered architecture**:
+
+- **Routes Layer** (`routes.py`) — HTTP endpoints, CSRF protection, form handling
+- **Services Layer** — Business logic separated into focused modules:
+  - `parser.py` — PDF validation and event extraction
+  - `calendar.py` — ICS file generation and preview data
+- **Utilities Layer** (`utils.py`) — Reusable text processing, time formatting, and iCalendar formatting
+- **Configuration Layer** (`config.py`) — Constants, patterns, and settings
+- **Models Layer** (`models.py`) — Data structures (Event dataclass)
+
+This separation enables easy testing, maintenance, and future feature additions.
 
 ## Requirements
 
@@ -177,10 +200,3 @@ For issues or feature requests, please check your EAF PDF format matches the lat
 ## License
 
 This project is created for De La Salle University students to manage their academic schedules.
-
----
-
-**Current Date:** May 1, 2026  
-**Default Term Length:** 14 weeks  
-**Timezone:** Asia/Manila (UTC+8)
-

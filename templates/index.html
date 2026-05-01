@@ -3,18 +3,17 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>EAF Scheduler</title>
+    <title>EAF Schedulr</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
   </head>
   <body>
     <main class="shell">
       <section class="hero">
         <div class="hero-copy">
-          <p class="eyebrow">Enrollment Assessment Form to Google Calendar</p>
-          <h1>Upload an EAF PDF and turn it into calendar events.</h1>
+          <p class="eyebrow">EAF to Google Calendar</p>
+          <h1>Turn your EAF into a class schedule you can import in seconds.</h1>
           <p class="lede">
-            The app extracts scheduled classes, seminars, and workshops from the form and builds a downloadable
-            <span>.ics</span> file for Google Calendar import.
+            Convert your DLSU EAF PDF into a Google Calendar schedule. Generate a downloadable <span>.ics</span> file with your classes, times, and rooms. Works instantly with Google Calendar.
           </p>
         </div>
 
@@ -61,54 +60,68 @@
       {% endwith %}
 
       <section class="panel">
-        <form class="upload-form" action="{{ url_for('generate') }}" method="post" enctype="multipart/form-data" data-inspect-url="{{ url_for('inspect') }}">
-          <label class="dropzone">
-            <input id="eaf-pdf-input" type="file" name="eaf_pdf" accept="application/pdf" required />
+        <form class="upload-form" action="{{ url_for('generate') }}" method="post" enctype="multipart/form-data" data-inspect-url="{{ url_for('inspect') }}" id="schedule-form">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+          
+          <label class="dropzone" for="eaf-pdf-input">
+            <input id="eaf-pdf-input" type="file" name="eaf_pdf" accept="application/pdf" required aria-label="Upload EAF PDF file" />
             <span class="dropzone-title">Drop your EAF here.</span>
-            <span class="dropzone-subtitle">Then set the term start date and number of weeks.</span>
-            <span class="dropzone-upload-status" id="dropzone-upload-status" aria-live="polite"></span>
+            <span class="dropzone-subtitle">Maximum file size: 10MB. PDF files only.</span>
+            <span class="dropzone-upload-status" id="dropzone-upload-status" aria-live="polite" role="status"></span>
+            <span class="file-size-hint" id="file-size-hint" aria-live="polite"></span>
           </label>
 
+          <div class="course-summary" id="course-summary" aria-live="polite" role="status">
+            <span id="course-count-text" class="is-hidden">Found <strong id="course-count">0</strong> courses</span>
+          </div>
+
           <div class="controls">
-            <label>
+            <label for="term-start-input">
               <span>Term start date</span>
-              <input type="date" name="term_start" value="{{ term_start }}" required />
+              <input id="term-start-input" type="date" name="term_start" value="{{ term_start }}" required aria-label="Term start date (first day of classes)" />
+              <span class="input-hint">The first day of classes</span>
             </label>
-            <label>
+            <label for="weeks-input">
               <span>Number of weeks</span>
-              <input type="number" name="weeks" min="1" max="52" value="{{ weeks }}" required />
+              <input id="weeks-input" type="number" name="weeks" min="1" max="52" value="{{ weeks }}" required aria-label="Number of weeks for the term" />
+              <span class="input-hint">Typically 14 weeks per term</span>
             </label>
           </div>
 
-          <div id="recollection-section" class="recollection-section {% if not has_recollection %}is-hidden{% endif %}">
+          <div id="recollection-section" class="recollection-section {% if not has_recollection %}is-hidden{% endif %}" aria-label="Lasallian Recollection settings">
             <div class="helper-box">
               <strong>Lasallian Recollection</strong>
               <p>
-                 If your EAF includes LASARE (LASALLIAN RECOLLECTION) 1, 2, or 3, select the exact date for each one shown
+                If your EAF includes LASARE (LASALLIAN RECOLLECTION) 1, 2, or 3, select the exact date for each one.
+              </p>
+            </div>
 
             <div id="recollection-row-LASARE1" class="controls recollection-row {% if 'LASARE1' not in visible_recollection_codes %}is-hidden{% endif %}">
-              <label>
+              <label for="recollection-date-LASARE1">
                 <span>LASALLIAN RECOLLECTION 1 date</span>
-                <input type="date" name="recollection_date_LASARE1" value="{{ recollection_dates['LASARE1'] if recollection_dates and 'LASARE1' in recollection_dates else '' }}" />
+                <input id="recollection-date-LASARE1" type="date" name="recollection_date_LASARE1" value="{{ recollection_dates['LASARE1'] if recollection_dates and 'LASARE1' in recollection_dates else '' }}" aria-label="Date for LASALLIAN RECOLLECTION 1" />
               </label>
             </div>
 
             <div id="recollection-row-LASARE2" class="controls recollection-row {% if 'LASARE2' not in visible_recollection_codes %}is-hidden{% endif %}">
-              <label>
+              <label for="recollection-date-LASARE2">
                 <span>LASALLIAN RECOLLECTION 2 date</span>
-                <input type="date" name="recollection_date_LASARE2" value="{{ recollection_dates['LASARE2'] if recollection_dates and 'LASARE2' in recollection_dates else '' }}" />
+                <input id="recollection-date-LASARE2" type="date" name="recollection_date_LASARE2" value="{{ recollection_dates['LASARE2'] if recollection_dates and 'LASARE2' in recollection_dates else '' }}" aria-label="Date for LASALLIAN RECOLLECTION 2" />
               </label>
             </div>
 
             <div id="recollection-row-LASARE3" class="controls recollection-row {% if 'LASARE3' not in visible_recollection_codes %}is-hidden{% endif %}">
-              <label>
+              <label for="recollection-date-LASARE3">
                 <span>LASALLIAN RECOLLECTION 3 date</span>
-                <input type="date" name="recollection_date_LASARE3" value="{{ recollection_dates['LASARE3'] if recollection_dates and 'LASARE3' in recollection_dates else '' }}" />
+                <input id="recollection-date-LASARE3" type="date" name="recollection_date_LASARE3" value="{{ recollection_dates['LASARE3'] if recollection_dates and 'LASARE3' in recollection_dates else '' }}" aria-label="Date for LASALLIAN RECOLLECTION 3" />
               </label>
             </div>
           </div>
 
-          <button type="submit">Generate calendar</button>
+          <div class="form-actions">
+            <button type="submit" id="generate-btn" aria-label="Generate calendar file from uploaded EAF">Generate calendar</button>
+            <button type="reset" id="clear-btn" class="secondary-button" aria-label="Clear uploaded file and start over">Clear and upload again</button>
+          </div>
         </form>
       </section>
 
@@ -127,6 +140,17 @@
           <p class="result-note">Import the downloaded file into Google Calendar to view your timetable.</p>
         </section>
       {% endif %}
+
+      <footer class="privacy-notice">
+        <p>
+          <strong>Privacy Notice:</strong> Your uploaded PDF files are processed in memory only and are not stored on our servers. 
+          After processing, all data is immediately cleared. We do not retain any information about your schedule or personal data.
+        </p>
+      </footer>
+
+      <footer class="lasallian-footer">
+        <p>Made by a Lasallian for Lasallians</p>
+      </footer>
     </main>
     <script src="{{ url_for('static', filename='app.js') }}"></script>
   </body>
