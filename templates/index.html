@@ -5,6 +5,15 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>EAF Schedulr</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
+    <!-- Google tag (gtag.js) -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-LEEDEK781L"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+
+      gtag('config', 'G-LEEDEK781L');
+    </script>
   </head>
   <body>
     <main class="shell">
@@ -60,7 +69,7 @@
       {% endwith %}
 
       <section class="panel">
-        <form class="upload-form" action="{{ url_for('generate') }}" method="post" enctype="multipart/form-data" data-inspect-url="{{ url_for('inspect') }}" id="schedule-form">
+        <form class="upload-form" action="{{ url_for('main.generate') }}" method="post" enctype="multipart/form-data" data-inspect-url="{{ url_for('main.inspect') }}" id="schedule-form">
           <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
           
           <label class="dropzone" for="eaf-pdf-input">
