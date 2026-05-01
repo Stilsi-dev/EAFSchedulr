@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>EAF Scheduler</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
+  </head>
+  <body>
+    <main class="shell">
+      <section class="hero">
+        <div class="hero-copy">
+          <p class="eyebrow">Enrollment Assessment Form to Google Calendar</p>
+          <h1>Upload an EAF PDF and turn it into calendar events.</h1>
+          <p class="lede">
+            The app extracts scheduled classes, seminars, and workshops from the form and builds a downloadable
+            <span>.ics</span> file for Google Calendar import.
+          </p>
+        </div>
+
+        <aside class="hero-card" aria-label="How it works">
+          <div class="hero-card-top">
+            <span class="hero-card-badge">FAST WORKFLOW</span>
+            <strong>From EAF to calendar in seconds.</strong>
+          </div>
+
+          <div class="hero-stat">
+            <strong>1</strong>
+            <div>
+              <span>Upload</span>
+              <p>Upload your EAF PDF. We’ll instantly extract your class schedule.</p>
+            </div>
+          </div>
+
+          <div class="hero-stat">
+            <strong>2</strong>
+            <div>
+              <span>Review</span>
+              <p>Set your term start and weeks. Adjust details only if needed.</p>
+            </div>
+          </div>
+
+          <div class="hero-stat">
+            <strong>3</strong>
+            <div>
+              <span>Import</span>
+              <p>Download your .ics file and import it to Google Calendar.</p>
+            </div>
+          </div>
+        </aside>
+      </section>
+
+      {% with messages = get_flashed_messages() %}
+        {% if messages %}
+          <div class="flash-list">
+            {% for message in messages %}
+              <div class="flash">{{ message }}</div>
+            {% endfor %}
+          </div>
+        {% endif %}
+      {% endwith %}
+
+      <section class="panel">
+        <form class="upload-form" action="{{ url_for('generate') }}" method="post" enctype="multipart/form-data" data-inspect-url="{{ url_for('inspect') }}">
+          <label class="dropzone">
+            <input id="eaf-pdf-input" type="file" name="eaf_pdf" accept="application/pdf" required />
+            <span class="dropzone-title">Drop your EAF here.</span>
+            <span class="dropzone-subtitle">Then set the term start date and number of weeks.</span>
+            <span class="dropzone-upload-status" id="dropzone-upload-status" aria-live="polite"></span>
+          </label>
+
+          <div class="controls">
+            <label>
+              <span>Term start date</span>
+              <input type="date" name="term_start" value="{{ term_start }}" required />
+            </label>
+            <label>
+              <span>Number of weeks</span>
+              <input type="number" name="weeks" min="1" max="52" value="{{ weeks }}" required />
+            </label>
+          </div>
+
+          <div id="recollection-section" class="recollection-section {% if not has_recollection %}is-hidden{% endif %}">
+            <div class="helper-box">
+              <strong>Lasallian Recollection</strong>
+              <p>
+                 If your EAF includes LASARE (LASALLIAN RECOLLECTION) 1, 2, or 3, select the exact date for each one shown
+
+            <div id="recollection-row-LASARE1" class="controls recollection-row {% if 'LASARE1' not in visible_recollection_codes %}is-hidden{% endif %}">
+              <label>
+                <span>LASALLIAN RECOLLECTION 1 date</span>
+                <input type="date" name="recollection_date_LASARE1" value="{{ recollection_dates['LASARE1'] if recollection_dates and 'LASARE1' in recollection_dates else '' }}" />
+              </label>
+            </div>
+
+            <div id="recollection-row-LASARE2" class="controls recollection-row {% if 'LASARE2' not in visible_recollection_codes %}is-hidden{% endif %}">
+              <label>
+                <span>LASALLIAN RECOLLECTION 2 date</span>
+                <input type="date" name="recollection_date_LASARE2" value="{{ recollection_dates['LASARE2'] if recollection_dates and 'LASARE2' in recollection_dates else '' }}" />
+              </label>
+            </div>
+
+            <div id="recollection-row-LASARE3" class="controls recollection-row {% if 'LASARE3' not in visible_recollection_codes %}is-hidden{% endif %}">
+              <label>
+                <span>LASALLIAN RECOLLECTION 3 date</span>
+                <input type="date" name="recollection_date_LASARE3" value="{{ recollection_dates['LASARE3'] if recollection_dates and 'LASARE3' in recollection_dates else '' }}" />
+              </label>
+            </div>
+          </div>
+
+          <button type="submit">Generate calendar</button>
+        </form>
+      </section>
+
+      {% if download_url %}
+        <section class="panel result-panel">
+          <div class="result-header">
+            <div>
+              <p class="eyebrow">Done</p>
+              <h2>Your calendar file is ready.</h2>
+            </div>
+            <a class="download-button" href="{{ download_url }}">Download .ics</a>
+          </div>
+          {% if generated_at %}
+            <p class="result-note">Generated at {{ generated_at }}.</p>
+          {% endif %}
+          <p class="result-note">Import the downloaded file into Google Calendar to view your timetable.</p>
+        </section>
+      {% endif %}
+    </main>
+    <script src="{{ url_for('static', filename='app.js') }}"></script>
+  </body>
+</html>
