@@ -4,12 +4,19 @@ document.addEventListener("DOMContentLoaded", () => {
   const recollectionSection = document.getElementById("recollection-section");
   const dropzone = document.querySelector(".dropzone");
   const dropzoneStatus = document.getElementById("dropzone-upload-status");
+  const fileSizeHint = document.getElementById("file-size-hint");
+  const courseSummary = document.getElementById("course-summary");
+  const courseCountText = document.getElementById("course-count-text");
+  const courseCount = document.getElementById("course-count");
+  const clearBtn = document.getElementById("clear-btn");
+  const generateBtn = document.getElementById("generate-btn");
 
   if (!form || !fileInput || !recollectionSection || !dropzone || !dropzoneStatus) {
     return;
   }
 
   const inspectUrl = form.dataset.inspectUrl;
+  const MAX_FILE_SIZE_MB = 10;
   const weekdayIndexByCode = {
     MON: 1,
     TUE: 2,
@@ -40,11 +47,26 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!file) {
       dropzone.classList.remove("has-file");
       dropzoneStatus.textContent = "";
+      fileSizeHint.textContent = "";
+      courseCountText.classList.add("is-hidden");
+      generateBtn.disabled = false;
       return;
     }
 
     dropzone.classList.add("has-file");
     dropzoneStatus.textContent = `Uploaded: ${file.name}`;
+    
+    // Show file size
+    const fileSizeMB = (file.size / 1024 / 1024).toFixed(2);
+    if (file.size > MAX_FILE_SIZE_MB * 1024 * 1024) {
+      fileSizeHint.textContent = `⚠️ File size (${fileSizeMB}MB) exceeds maximum of ${MAX_FILE_SIZE_MB}MB`;
+      fileSizeHint.classList.add("error");
+      generateBtn.disabled = true;
+    } else {
+      fileSizeHint.textContent = `File size: ${fileSizeMB}MB`;
+      fileSizeHint.classList.remove("error");
+      generateBtn.disabled = false;
+    }
   };
 
   const validateRecollectionInput = (input) => {
@@ -113,6 +135,15 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   };
 
+  const updateCourseCount = (count) => {
+    if (count > 0) {
+      courseCount.textContent = count;
+      courseCountText.classList.remove("is-hidden");
+    } else {
+      courseCountText.classList.add("is-hidden");
+    }
+  };
+
   Object.values(recollectionRows).forEach((row) => {
     if (!row) {
       return;
@@ -127,15 +158,40 @@ document.addEventListener("DOMContentLoaded", () => {
     input.addEventListener("change", () => validateRecollectionInput(input));
   });
 
+  // Clear button resets the form
+  if (clearBtn) {
+    clearBtn.addEventListener("click", () => {
+      form.reset();
+      setDropzoneStatus(null);
+      setRecollectionVisible([]);
+      updateCourseCount(0);
+    });
+  }
+
   fileInput.addEventListener("change", async () => {
     const file = fileInput.files && fileInput.files[0];
     if (!file) {
       setDropzoneStatus(null);
       setRecollectionVisible([]);
+      updateCourseCount(0);
       return;
     }
 
     setDropzoneStatus(file);
+
+    // Client-side file validation
+    if (file.size > MAX_FILE_SIZE_MB * 1024 * 1024) {
+      setRecollectionVisible([]);
+      updateCourseCount(0);
+      return;
+    }
+
+    if (!file.type.includes("pdf") && !file.name.endsWith(".pdf")) {
+      dropzoneStatus.textContent = "⚠️ Please upload a PDF file";
+      setRecollectionVisible([]);
+      updateCourseCount(0);
+      return;
+    }
 
     const formData = new FormData();
     formData.append("eaf_pdf", file, file.name);
@@ -148,13 +204,19 @@ document.addEventListener("DOMContentLoaded", () => {
 
       const data = await response.json();
       if (!response.ok) {
+        dropzoneStatus.textContent = `⚠️ ${data.error || "Error reading PDF"}`;
         setRecollectionVisible([]);
+        updateCourseCount(0);
         return;
       }
 
+      dropzoneStatus.textContent = `✓ Uploaded: ${file.name}`;
       setRecollectionVisible(data.recollection_codes || [], data.recollection_days || {});
+      updateCourseCount(data.course_count || 0);
     } catch (_error) {
+      dropzoneStatus.textContent = "⚠️ Error reading PDF";
       setRecollectionVisible([]);
+      updateCourseCount(0);
     }
   });
 });
