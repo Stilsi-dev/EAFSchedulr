@@ -254,7 +254,11 @@ def build_timetable_preview(
         "slot_height": TIMETABLE_SLOT_HEIGHT,
         "height_px": int((span_minutes / TIMETABLE_SLOT_MINUTES) * TIMETABLE_SLOT_HEIGHT),
         "day_count": len(DAY_TO_WEEKDAY),
-        "current_day_key": [day for day, weekday in DAY_TO_WEEKDAY.items() if weekday == date.today().weekday()][0] if date.today().weekday() in DAY_TO_WEEKDAY.values() else None,
+        "current_day_key": next(
+            (day for day, weekday in DAY_TO_WEEKDAY.items()
+            if weekday == date.today().weekday()),
+            None
+        ),
         "ticks": [
             {
                 "top_pct": ((minute - start_minutes) / span_minutes) * 100,
