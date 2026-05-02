@@ -75,7 +75,8 @@
           <label class="dropzone" for="eaf-pdf-input">
             <input id="eaf-pdf-input" type="file" name="eaf_pdf" accept="application/pdf" required aria-label="Upload EAF PDF file" />
             <span class="dropzone-title">Drop your EAF here.</span>
-            <span class="dropzone-subtitle">Maximum file size: 10MB. PDF files only.</span>
+            <span class="dropzone-subtitle">PDF only, up to 10MB. Best results come from the latest Archers Hub EAF export.</span>
+            <span class="dropzone-hint">After upload, we’ll review your schedule and ask a few quick questions before generating your calendar.</span>
             <span class="dropzone-upload-status" id="dropzone-upload-status" aria-live="polite" role="status"></span>
             <span class="file-size-hint" id="file-size-hint" aria-live="polite"></span>
           </label>
@@ -83,6 +84,8 @@
           <div class="course-summary" id="course-summary" aria-live="polite" role="status">
             <span id="course-count-text" class="is-hidden">Found <strong id="course-count">0</strong> courses</span>
           </div>
+
+          <p class="form-status" id="form-status" aria-live="polite"></p>
 
           <div class="controls">
             <label for="term-start-input">
@@ -143,6 +146,26 @@
             </div>
             <a class="download-button" href="{{ download_url }}">Download .ics</a>
           </div>
+          <div class="result-summary" aria-label="Generated calendar summary">
+            <div>
+              <span>Filename</span>
+              <strong>{{ generated_filename }}</strong>
+            </div>
+            <div>
+              <span>Courses</span>
+              <strong>{{ course_count }}</strong>
+            </div>
+            <div>
+              <span>Events</span>
+              <strong>{{ event_count }}</strong>
+            </div>
+            {% if recollection_count %}
+              <div>
+                <span>Recollections</span>
+                <strong>{{ recollection_count }}</strong>
+              </div>
+            {% endif %}
+          </div>
           {% if generated_at %}
             <p class="result-note">Generated at {{ generated_at }}.</p>
           {% endif %}
@@ -152,8 +175,7 @@
 
       <footer class="privacy-notice">
         <p>
-          <strong>Privacy Notice:</strong> Your uploaded PDF files are processed in memory only and are not stored on our servers. 
-          After processing, all data is immediately cleared. We do not retain any information about your schedule or personal data.
+          <strong>Privacy Notice:</strong> We use Google Analytics to measure general site usage. Your uploaded PDF files are processed in memory only and are not stored on our servers. After processing, schedule data is cleared from the app.
         </p>
       </footer>
 

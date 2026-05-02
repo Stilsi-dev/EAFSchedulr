@@ -171,6 +171,7 @@ def generate() -> tuple[str, int] | str:
     recollection_codes = sorted({event.code for event in events if event.code in RECOLLECTION_TITLES})
     recollection_dates: dict[str, date] = {}
     has_recollection = bool(recollection_codes)
+    recollection_count = len(recollection_codes)
 
     if has_recollection:
         for code in recollection_codes:
@@ -211,6 +212,7 @@ def generate() -> tuple[str, int] | str:
         events=[event.__dict__ for event in events],
         download_url=download_url,
         generated_at=generated_at,
+        generated_filename=GENERATED_FILENAMES[token],
         term_start=term_start.isoformat(),
         weeks=weeks,
         recollection_dates={code: recollection_dates.get(code, date.today()).isoformat() for code in RECOLLECTION_TITLES},
@@ -219,6 +221,8 @@ def generate() -> tuple[str, int] | str:
         timetable=build_timetable_preview(events, recollection_dates),
         csrf_token=csrf_token,
         course_count=len({event.code for event in events}),
+        event_count=len(events),
+        recollection_count=recollection_count,
     )
 
 

@@ -43,7 +43,7 @@ body {
 .hero {
   display: grid;
   grid-template-columns: minmax(0, 1.35fr) minmax(290px, 0.95fr);
-  gap: 20px;
+  gap: 24px;
   align-items: stretch;
   margin-bottom: 22px;
 }
@@ -51,7 +51,8 @@ body {
 .hero-copy {
   display: grid;
   align-content: center;
-  gap: 2px;
+  gap: 8px;
+  max-width: 720px;
 }
 
 .eyebrow {
@@ -71,11 +72,11 @@ h2 {
 }
 
 h1 {
-  font-size: clamp(2.5rem, 5vw, 4.2rem);
-  max-width: 20ch;
+  font-size: clamp(2.7rem, 5vw, 4.5rem);
+  max-width: 18ch;
   font-weight: 900;
   letter-spacing: -0.02em;
-  line-height: 1.1;
+  line-height: 1.04;
   background: linear-gradient(135deg, var(--accent-strong) 0%, var(--accent) 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
@@ -83,9 +84,9 @@ h1 {
 }
 
 .lede {
-  max-width: 66ch;
-  margin: 14px 0 0;
-  font-size: 1rem;
+  max-width: 58ch;
+  margin: 4px 0 0;
+  font-size: 1.03rem;
   line-height: 1.65;
   color: var(--muted);
 }
@@ -106,7 +107,7 @@ h1 {
   border-radius: 26px;
   padding: 22px;
   display: grid;
-  gap: 14px;
+  gap: 12px;
   align-content: start;
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(247, 251, 248, 1)),
@@ -128,7 +129,7 @@ h1 {
 
 .hero-card-top {
   display: grid;
-  gap: 8px;
+  gap: 6px;
 }
 
 .hero-card-top strong {
@@ -150,7 +151,7 @@ h1 {
 
 .hero-stat {
   display: flex;
-  gap: 16px;
+  gap: 14px;
   align-items: flex-start;
   padding: 15px 16px;
   border-radius: 18px;
@@ -191,19 +192,19 @@ h1 {
 .panel {
   border-radius: 24px;
   padding: 24px;
-  margin-top: 18px;
+  margin-top: 16px;
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(250, 252, 250, 1));
 }
 
 .upload-form {
   display: grid;
-  gap: 18px;
+  gap: 16px;
 }
 
 .dropzone {
   position: relative;
   display: grid;
-  gap: 8px;
+  gap: 7px;
   padding: 24px;
   border-radius: 22px;
   border: 1.5px dashed rgba(0, 99, 65, 0.28);
@@ -212,7 +213,7 @@ h1 {
     var(--surface-soft);
   cursor: pointer;
   transition: transform 180ms ease, border-color 180ms ease, box-shadow 180ms ease, background 180ms ease;
-  min-height: 150px;
+  min-height: 162px;
   align-content: center;
 }
 
@@ -231,7 +232,7 @@ h1 {
 }
 
 .dropzone-title {
-  font-size: 1.08rem;
+  font-size: 1.14rem;
   font-weight: 850;
   letter-spacing: -0.02em;
 }
@@ -240,6 +241,12 @@ h1 {
   color: var(--muted);
   line-height: 1.45;
   font-size: 0.95rem;
+}
+
+.dropzone-hint {
+  color: #6a7a72;
+  line-height: 1.5;
+  font-size: 0.88rem;
 }
 
 .dropzone-upload-status {
@@ -306,6 +313,32 @@ h1 {
 .course-summary strong {
   color: var(--accent-strong);
   font-weight: 700;
+}
+
+.form-status {
+  min-height: 1.3em;
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.92rem;
+  line-height: 1.45;
+}
+
+.form-status.is-loading {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--accent-strong);
+  font-weight: 700;
+}
+
+.form-status.is-loading::before {
+  content: "";
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  border: 2px solid rgba(0, 99, 65, 0.18);
+  border-top-color: var(--accent);
+  animation: spin 0.8s linear infinite;
 }
 
 .helper-box {
@@ -489,6 +522,36 @@ button:disabled:hover {
   margin-bottom: 16px;
 }
 
+.result-summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.result-summary div {
+  padding: 14px 16px;
+  border-radius: 16px;
+  background: var(--surface-soft);
+  border: 1px solid var(--border);
+}
+
+.result-summary span {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 0.76rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--muted);
+}
+
+.result-summary strong {
+  display: block;
+  font-size: 1rem;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
 .result-note {
   margin: 0;
   color: var(--muted);
@@ -525,6 +588,12 @@ button:disabled:hover {
 
 .privacy-notice p {
   margin: 0;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .lasallian-footer {
@@ -860,6 +929,10 @@ button:disabled:hover {
 
   .result-header {
     align-items: start;
+  }
+
+  .result-summary {
+    grid-template-columns: 1fr;
   }
 
   .timetable-head,
