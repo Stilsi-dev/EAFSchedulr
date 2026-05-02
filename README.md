@@ -19,18 +19,21 @@ Convert your Enrollment Assessment Form (EAF) PDF into a Google Calendar-compati
 
 ## Quick Start
 
+**Live demo:** https://eafschedulr.onrender.com
+
+
 ### Installation
 
-1. Clone this repository
+1. Clone this repository.
 2. Create a Python virtual environment:
    ```bash
    python -m venv .venv
    ```
 
 3. Activate the virtual environment:
-   - **Windows PowerShell:** `.\.venv\Scripts\Activate.ps1`
-   - **Windows CMD:** `.\.venv\Scripts\activate.bat`
-   - **macOS/Linux:** `source .venv/bin/activate`
+   - Windows PowerShell: .\.venv\Scripts\Activate.ps1
+   - Windows CMD: .\.venv\Scripts\activate.bat
+   - macOS/Linux: source .venv/bin/activate
 
 4. Install dependencies:
    ```bash
@@ -38,13 +41,19 @@ Convert your Enrollment Assessment Form (EAF) PDF into a Google Calendar-compati
    ```
 
 ### Running the App
+**Run locally (development)** — Use these steps to run the app on your machine for testing or development.
 
-1. Activate your virtual environment (see step 3 above)
+1. Activate your virtual environment (see step 3 above).
 2. Start the Flask development server:
    ```bash
    python run.py
    ```
-3. Open your browser and go to `http://127.0.0.1:5000`
+3. Open your browser and go to: http://127.0.0.1:5000
+
+On Windows PowerShell you can also use the helper script:
+```powershell
+.\start.ps1
+```
 
 ## How to Use
 
@@ -95,6 +104,7 @@ EAFtoGCAL_AH/
 ├── templates/
 │   └── index.html                # HTML template
 ├── run.py                        # Application entry point
+├── start.ps1                     # Windows PowerShell launcher
 ├── README.md                     # This file
 └── requirements.txt              # Python dependencies
 ```

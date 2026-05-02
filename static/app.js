@@ -8,6 +8,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const courseSummary = document.getElementById("course-summary");
   const courseCountText = document.getElementById("course-count-text");
   const courseCount = document.getElementById("course-count");
+  const formStatus = document.getElementById("form-status");
   const clearBtn = document.getElementById("clear-btn");
   const generateBtn = document.getElementById("generate-btn");
 
@@ -43,13 +44,40 @@ document.addEventListener("DOMContentLoaded", () => {
     LASARE3: document.getElementById("recollection-row-LASARE3"),
   };
 
+  const originalGenerateLabel = generateBtn ? generateBtn.textContent : "Generate calendar";
+  let isInspecting = false;
+  let isGenerating = false;
+  let hasValidFile = false;
+
+  const updateGenerateButtonState = () => {
+    if (!generateBtn) {
+      return;
+    }
+
+    const disabled = isInspecting || isGenerating || !hasValidFile;
+    generateBtn.disabled = disabled;
+    generateBtn.textContent = isGenerating ? "Generating..." : originalGenerateLabel;
+    if (formStatus) {
+      formStatus.classList.toggle("is-loading", isInspecting || isGenerating);
+      formStatus.textContent = isInspecting
+        ? "Checking your PDF for courses and recollection dates..."
+        : isGenerating
+          ? "Generating your calendar file..."
+          : "";
+    }
+    form.setAttribute("aria-busy", String(isInspecting || isGenerating));
+  };
+
   const setDropzoneStatus = (file) => {
     if (!file) {
       dropzone.classList.remove("has-file");
       dropzoneStatus.textContent = "";
       fileSizeHint.textContent = "";
       courseCountText.classList.add("is-hidden");
-      generateBtn.disabled = false;
+      hasValidFile = false;
+      isInspecting = false;
+      isGenerating = false;
+      updateGenerateButtonState();
       return;
     }
 
@@ -61,12 +89,14 @@ document.addEventListener("DOMContentLoaded", () => {
     if (file.size > MAX_FILE_SIZE_MB * 1024 * 1024) {
       fileSizeHint.textContent = `⚠️ File size (${fileSizeMB}MB) exceeds maximum of ${MAX_FILE_SIZE_MB}MB`;
       fileSizeHint.classList.add("error");
-      generateBtn.disabled = true;
+      hasValidFile = false;
     } else {
       fileSizeHint.textContent = `File size: ${fileSizeMB}MB`;
       fileSizeHint.classList.remove("error");
-      generateBtn.disabled = false;
+      hasValidFile = true;
     }
+
+    updateGenerateButtonState();
   };
 
   const validateRecollectionInput = (input) => {
@@ -165,6 +195,10 @@ document.addEventListener("DOMContentLoaded", () => {
       setDropzoneStatus(null);
       setRecollectionVisible([]);
       updateCourseCount(0);
+      if (formStatus) {
+        formStatus.textContent = "";
+        formStatus.classList.remove("is-loading");
+      }
     });
   }
 
@@ -193,6 +227,10 @@ document.addEventListener("DOMContentLoaded", () => {
       return;
     }
 
+    isInspecting = true;
+    updateGenerateButtonState();
+    dropzoneStatus.textContent = `Inspecting ${file.name}...`;
+
     const formData = new FormData();
     formData.append("eaf_pdf", file, file.name);
 
@@ -207,16 +245,34 @@ document.addEventListener("DOMContentLoaded", () => {
         dropzoneStatus.textContent = `⚠️ ${data.error || "Error reading PDF"}`;
         setRecollectionVisible([]);
         updateCourseCount(0);
+        hasValidFile = false;
         return;
       }
 
       dropzoneStatus.textContent = `✓ Uploaded: ${file.name}`;
       setRecollectionVisible(data.recollection_codes || [], data.recollection_days || {});
       updateCourseCount(data.course_count || 0);
+      hasValidFile = true;
     } catch (_error) {
       dropzoneStatus.textContent = "⚠️ Error reading PDF";
       setRecollectionVisible([]);
       updateCourseCount(0);
+      hasValidFile = false;
+    } finally {
+      isInspecting = false;
+      updateGenerateButtonState();
+    }
+  });
+
+  form.addEventListener("submit", () => {
+    if (!hasValidFile) {
+      return;
+    }
+
+    isGenerating = true;
+    updateGenerateButtonState();
+    if (clearBtn) {
+      clearBtn.disabled = true;
     }
   });
 });
