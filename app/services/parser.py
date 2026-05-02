@@ -36,7 +36,7 @@ def validate_pdf_file(uploaded_file: FileStorage | None) -> tuple[bool, str]:
     if not uploaded_file or uploaded_file.filename == "":
         return False, "Please upload a file."
     
-    filename = secure_filename(uploaded_file.filename)
+    filename = secure_filename(uploaded_file.filename or "")
     if not filename.lower().endswith(".pdf"):
         return False, "Only PDF files are accepted. Please upload a valid PDF file."
     
@@ -70,7 +70,7 @@ def parse_eaf_pdf(uploaded_file: FileStorage) -> list[Event]:
         ValueError: If PDF cannot be read or contains no valid events
     """
     try:
-        reader = PdfReader(uploaded_file)
+        reader = PdfReader(uploaded_file.stream)
     except Exception as exc:
         raise ValueError(f"Could not read PDF file. It may be corrupted or not a valid PDF. Error: {str(exc)}") from exc
     
@@ -109,8 +109,10 @@ def parse_eaf_pdf(uploaded_file: FileStorage) -> list[Event]:
     events: list[Event] = []
 
     for row in rows:
-        match = re.match(
-            r"^\d+\s+([A-Z0-9]+)-(.+?)\s+(Lecture|Seminar / Workshop|Laboratory)\s+([A-Z0-9]+)\s+([\d.]+)\s+(.*)$",
+        match = re.search(
+            r"([A-Z0-9]+)-(.+?)\s+"
+            r"(Lecture|Seminar / Workshop|Laboratory|Research / Capstone)\s+"
+            r"([A-Z0-9]+)\s+([\d.]+)\s+(.*)",
             row,
         )
         if match is None:
@@ -126,7 +128,7 @@ def parse_eaf_pdf(uploaded_file: FileStorage) -> list[Event]:
             day = schedule_match.group(1).upper()
             start_time = normalize_text(schedule_match.group(2).upper())
             end_time = normalize_text(schedule_match.group(3).upper())
-            location = standardize_location(schedule_match.group(4))
+            location = standardize_location(schedule_match.group(4) or "")
             events.append(
                 Event(
                     code=code,
@@ -157,7 +159,7 @@ def build_schedule_filename(uploaded_file: FileStorage) -> str:
     """
     try:
         uploaded_file.seek(0)
-        reader = PdfReader(uploaded_file)
+        reader = PdfReader(uploaded_file.stream)
         text = normalize_text(" ".join(page.extract_text() or "" for page in reader.pages))
     finally:
         try:
