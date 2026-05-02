@@ -110,7 +110,7 @@ def parse_eaf_pdf(uploaded_file: FileStorage) -> list[Event]:
 
     for row in rows:
         match = re.match(
-            r"^\d+\s+([A-Z0-9]+)-(.+?)\s+(Lecture|Seminar / Workshop|Laboratory)\s+([A-Z0-9]+)\s+([\d.]+)\s+(.*)$",
+            r"^\d+\s+([A-Z0-9]+)-(.+?)\s+(Lecture|Seminar / Workshop|Laboratory|Research / Capstone)\s+([A-Z0-9]+)\s+([\d.]+)\s+(.*)$",
             row,
         )
         if match is None:
