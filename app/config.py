@@ -44,6 +44,6 @@ TIMETABLE_SLOT_HEIGHT = 36
 
 # Schedule Pattern
 SCHEDULE_PATTERN = re.compile(
-    r"(MON|TUE|WED|THU|FRI|SAT)\s*\|\s*([0-9]{1,2}:[0-9]{2}\s*[AP]M)\s*-\s*([0-9]{1,2}:[0-9]{2}\s*[AP]M)\s*\|\s*([^,]*)",
+    r"(MON|TUE|WED|THU|FRI|SAT)\s*\|\s*([0-9]{1,2}:[0-9]{2}\s*[AP]M)\s*-\s*([0-9]{1,2}:[0-9]{2}\s*[AP]M)\s*\|\s*([^,]+)",
     re.IGNORECASE,
 )

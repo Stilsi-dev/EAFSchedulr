@@ -40,6 +40,38 @@ body {
   justify-content: space-between;
 }
 
+.topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  margin-bottom: 14px;
+}
+
+.topbar .brand {
+  font-weight: 800;
+  color: var(--accent-strong);
+  font-size: 1rem;
+}
+
+.support-links {
+  font-size: 0.9rem;
+  color: var(--muted);
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.support-links a {
+  color: var(--accent-strong);
+  text-decoration: none;
+  font-weight: 700;
+}
+
+.support-links .sep {
+  color: rgba(0,0,0,0.12);
+}
+
 .hero {
   display: grid;
   grid-template-columns: minmax(0, 1.35fr) minmax(290px, 0.95fr);
@@ -213,7 +245,7 @@ h1 {
     var(--surface-soft);
   cursor: pointer;
   transition: transform 180ms ease, border-color 180ms ease, box-shadow 180ms ease, background 180ms ease;
-  min-height: 162px;
+  min-height: 180px;
   align-content: center;
 }
 
@@ -443,6 +475,19 @@ button,
   cursor: pointer;
 }
 
+.form-actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+@media (max-width: 520px) {
+  .form-actions button {
+    flex: 1 1 100%;
+  }
+}
+
 button:hover,
 .download-button:hover {
   transform: translateY(-1px);
@@ -587,7 +632,11 @@ button:disabled:hover {
 }
 
 .privacy-notice p {
-  margin: 0;
+  margin: 0 0 12px;
+}
+
+.privacy-notice p:last-child {
+  margin-bottom: 0;
 }
 
 @keyframes spin {

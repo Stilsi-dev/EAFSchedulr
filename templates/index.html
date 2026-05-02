@@ -76,7 +76,7 @@
             <input id="eaf-pdf-input" type="file" name="eaf_pdf" accept="application/pdf" required aria-label="Upload EAF PDF file" />
             <span class="dropzone-title">Drop your EAF here.</span>
             <span class="dropzone-subtitle">PDF only, up to 10MB. Best results come from the latest Archers Hub EAF export.</span>
-            <span class="dropzone-hint">After upload, we’ll review your schedule and ask a few quick questions before generating your calendar.</span>
+            <span class="dropzone-hint">After upload, we check your schedule and reveal any recollection dates before you generate the calendar.</span>
             <span class="dropzone-upload-status" id="dropzone-upload-status" aria-live="polite" role="status"></span>
             <span class="file-size-hint" id="file-size-hint" aria-live="polite"></span>
           </label>
@@ -175,7 +175,11 @@
 
       <footer class="privacy-notice">
         <p>
-          <strong>Privacy Notice:</strong> We use Google Analytics to measure general site usage. Your uploaded PDF files are processed in memory only and are not stored on our servers. After processing, schedule data is cleared from the app.
+          <strong>Privacy Notice:</strong> We use Google Analytics to understand general site usage. Your uploaded PDF is processed in memory only and is never stored on our servers. All data extracted from the PDF is automatically deleted after processing.
+        </p>
+        <p>
+          <strong>Need help?</strong>
+          If you encounter bugs, email <a href="mailto:angelo_nuque@dlsu.edu.ph">angelo_nuque@dlsu.edu.ph</a> or report an issue on <a href="https://github.com/Stilsi-dev/EAFSchedulr/issues" target="_blank" rel="noopener">GitHub</a>.
         </p>
       </footer>
 
