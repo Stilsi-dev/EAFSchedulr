@@ -4,6 +4,7 @@ Handles PDF validation, text extraction, and event parsing from
 De La Salle University Enrollment Assessment Forms.
 """
 
+from dataclasses import dataclass
 import re
 from typing import Iterable
 
@@ -11,9 +12,42 @@ from pypdf import PdfReader
 from werkzeug.datastructures import FileStorage
 from werkzeug.utils import secure_filename
 
-from app.config import MAX_PDF_SIZE_BYTES, MAX_PDF_SIZE_MB, SCHEDULE_PATTERN
+from app.config import MAX_PDF_SIZE_BYTES, MAX_PDF_SIZE_MB
 from app.models import Event
 from app.utils import normalize_text, standardize_location
+
+
+@dataclass(frozen=True)
+class AmbiguousRow:
+    """A parsed row that could not be mapped confidently to a course meeting."""
+
+    code: str
+    row_number: int
+    text: str
+    reason: str
+
+
+@dataclass(frozen=True)
+class ParsedEAF:
+    """Result of parsing an EAF PDF."""
+
+    events: list[Event]
+    ambiguous_rows: list[AmbiguousRow]
+
+
+COURSE_ROW_PATTERN = re.compile(
+    r"^\d+\s+([A-Z0-9]+)-(.+?)\s+"
+    r"(Lecture|Seminar / Workshop|Laboratory|Research / Capstone)\s+"
+    r"([A-Z0-9]+)\s+([\d.]+)\s+(.*)$"
+)
+
+SCHEDULE_SEGMENT_PATTERN = re.compile(
+    r"^(MON|TUE|WED|THU|FRI|SAT)\s*\|\s*"
+    r"([0-9]{1,2}:[0-9]{2}\s*[AP]M)\s*-\s*"
+    r"([0-9]{1,2}:[0-9]{2}\s*[AP]M)"
+    r"(?:\s*\|\s*([^,]*))?\s*$",
+    re.IGNORECASE,
+)
 
 
 def validate_pdf_file(uploaded_file: FileStorage | None) -> tuple[bool, str]:
@@ -54,7 +88,7 @@ def validate_pdf_file(uploaded_file: FileStorage | None) -> tuple[bool, str]:
     return True, ""
 
 
-def parse_eaf_pdf(uploaded_file: FileStorage) -> list[Event]:
+def parse_eaf_pdf(uploaded_file: FileStorage) -> ParsedEAF:
     """Parse EAF PDF and extract scheduled events.
     
     Extracts course codes, course names, sections, and schedule information
@@ -64,7 +98,7 @@ def parse_eaf_pdf(uploaded_file: FileStorage) -> list[Event]:
         uploaded_file: Flask FileStorage object containing PDF
         
     Returns:
-        List of Event objects extracted from PDF
+        ParsedEAF object with extracted events and ambiguous rows
         
     Raises:
         ValueError: If PDF cannot be read or contains no valid events
@@ -107,15 +141,20 @@ def parse_eaf_pdf(uploaded_file: FileStorage) -> list[Event]:
 
     # Extract events from rows
     events: list[Event] = []
+    ambiguous_rows: list[AmbiguousRow] = []
 
-    for row in rows:
-        match = re.search(
-            r"([A-Z0-9]+)-(.+?)\s+"
-            r"(Lecture|Seminar / Workshop|Laboratory|Research / Capstone)\s+"
-            r"([A-Z0-9]+)\s+([\d.]+)\s+(.*)",
-            row,
-        )
+    for row_number, row in enumerate(rows, start=1):
+        match = COURSE_ROW_PATTERN.fullmatch(row)
         if match is None:
+            code_match = re.match(r"^\d+\s+([A-Z0-9]+)-", row)
+            ambiguous_rows.append(
+                AmbiguousRow(
+                    code=code_match.group(1) if code_match else "UNKNOWN",
+                    row_number=row_number,
+                    text=row,
+                    reason="The row did not match the expected course format.",
+                )
+            )
             continue
 
         code = normalize_text(match.group(1))
@@ -124,12 +163,21 @@ def parse_eaf_pdf(uploaded_file: FileStorage) -> list[Event]:
         schedule_text = normalize_text(match.group(6))
         title = f"{code} {section}"
 
-        for schedule_match in SCHEDULE_PATTERN.finditer(schedule_text):
+        schedule_segments = [segment.strip() for segment in schedule_text.split(",") if segment.strip()]
+        parsed_events: list[Event] = []
+        invalid_segment = None
+
+        for schedule_segment in schedule_segments:
+            schedule_match = SCHEDULE_SEGMENT_PATTERN.fullmatch(schedule_segment)
+            if schedule_match is None:
+                invalid_segment = schedule_segment
+                break
+
             day = schedule_match.group(1).upper()
             start_time = normalize_text(schedule_match.group(2).upper())
             end_time = normalize_text(schedule_match.group(3).upper())
             location = standardize_location(schedule_match.group(4) or "")
-            events.append(
+            parsed_events.append(
                 Event(
                     code=code,
                     title=title,
@@ -142,7 +190,25 @@ def parse_eaf_pdf(uploaded_file: FileStorage) -> list[Event]:
                 )
             )
 
-    return events
+        if invalid_segment is not None or not parsed_events:
+            ambiguous_rows.append(
+                AmbiguousRow(
+                    code=code,
+                    row_number=row_number,
+                    text=row,
+                    reason=(
+                        "Could not confidently parse the schedule fragment: "
+                        f"{invalid_segment}"
+                        if invalid_segment is not None
+                        else "The row did not include any recognizable meeting times."
+                    ),
+                )
+            )
+            continue
+
+        events.extend(parsed_events)
+
+    return ParsedEAF(events=events, ambiguous_rows=ambiguous_rows)
 
 
 def build_schedule_filename(uploaded_file: FileStorage) -> str:

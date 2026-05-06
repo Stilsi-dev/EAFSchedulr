@@ -1,192 +1,24 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>EAF Schedulr</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
-    <!-- Google tag (gtag.js) -->
-    <script async src="https://www.googletagmanager.com/gtag/js?id=G-LEEDEK781L"></script>
-    <script>
-      window.dataLayer = window.dataLayer || [];
-      function gtag(){dataLayer.push(arguments);}
-      gtag('js', new Date());
-
-      gtag('config', 'G-LEEDEK781L');
-    </script>
-  </head>
-  <body>
-    <main class="shell">
-      <section class="hero">
-        <div class="hero-copy">
-          <p class="eyebrow">EAF to Google Calendar</p>
-          <h1>Turn your EAF into a class schedule you can import in seconds.</h1>
-          <p class="lede">
-            Convert your DLSU EAF PDF into a Google Calendar schedule. Generate a downloadable <span>.ics</span> file with your classes, times, and rooms. Works instantly with Google Calendar.
-          </p>
-        </div>
-
-        <aside class="hero-card" aria-label="How it works">
-          <div class="hero-card-top">
-            <span class="hero-card-badge">FAST WORKFLOW</span>
-            <strong>From EAF to calendar in seconds.</strong>
-          </div>
-
-          <div class="hero-stat">
-            <strong>1</strong>
-            <div>
-              <span>Upload</span>
-              <p>Upload your EAF PDF. We’ll instantly extract your class schedule.</p>
-            </div>
-          </div>
-
-          <div class="hero-stat">
-            <strong>2</strong>
-            <div>
-              <span>Review</span>
-              <p>Set your term start and weeks. Adjust details only if needed.</p>
-            </div>
-          </div>
-
-          <div class="hero-stat">
-            <strong>3</strong>
-            <div>
-              <span>Import</span>
-              <p>Download your .ics file and import it to Google Calendar.</p>
-            </div>
-          </div>
-        </aside>
-      </section>
-
-      {% with messages = get_flashed_messages() %}
-        {% if messages %}
-          <div class="flash-list">
-            {% for message in messages %}
-              <div class="flash">{{ message }}</div>
-            {% endfor %}
-          </div>
-        {% endif %}
-      {% endwith %}
-
-      <section class="panel">
-        <form class="upload-form" action="{{ url_for('main.generate') }}" method="post" enctype="multipart/form-data" data-inspect-url="{{ url_for('main.inspect') }}" id="schedule-form">
-          <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
-          
-          <label class="dropzone" for="eaf-pdf-input">
-            <input id="eaf-pdf-input" type="file" name="eaf_pdf" accept="application/pdf" required aria-label="Upload EAF PDF file" />
-            <span class="dropzone-title">Drop your EAF here.</span>
-            <span class="dropzone-subtitle">PDF only, up to 10MB. Best results come from the latest Archers Hub EAF export.</span>
-            <span class="dropzone-hint">After upload, we check your schedule and reveal any recollection dates before you generate the calendar.</span>
-            <span class="dropzone-upload-status" id="dropzone-upload-status" aria-live="polite" role="status"></span>
-            <span class="file-size-hint" id="file-size-hint" aria-live="polite"></span>
-          </label>
-
-          <div class="course-summary" id="course-summary" aria-live="polite" role="status">
-            <span id="course-count-text" class="is-hidden">Found <strong id="course-count">0</strong> courses</span>
-          </div>
-
-          <p class="form-status" id="form-status" aria-live="polite"></p>
-
-          <div class="controls">
-            <label for="term-start-input">
-              <span>Term start date</span>
-              <input id="term-start-input" type="date" name="term_start" value="{{ term_start }}" required aria-label="Term start date (first day of classes)" />
-              <span class="input-hint">The first day of classes</span>
-            </label>
-            <label for="weeks-input">
-              <span>Number of weeks</span>
-              <input id="weeks-input" type="number" name="weeks" min="1" max="52" value="{{ weeks }}" required aria-label="Number of weeks for the term" />
-              <span class="input-hint">Typically 14 weeks per term</span>
-            </label>
-          </div>
-
-          <div id="recollection-section" class="recollection-section {% if not has_recollection %}is-hidden{% endif %}" aria-label="Lasallian Recollection settings">
-            <div class="helper-box">
-              <strong>Lasallian Recollection</strong>
-              <p>
-                If your EAF includes LASARE (LASALLIAN RECOLLECTION) 1, 2, or 3, select the exact date for each one.
-              </p>
-            </div>
-
-            <div id="recollection-row-LASARE1" class="controls recollection-row {% if 'LASARE1' not in visible_recollection_codes %}is-hidden{% endif %}">
-              <label for="recollection-date-LASARE1">
-                <span>LASALLIAN RECOLLECTION 1 date</span>
-                <input id="recollection-date-LASARE1" type="date" name="recollection_date_LASARE1" value="{{ recollection_dates['LASARE1'] if recollection_dates and 'LASARE1' in recollection_dates else '' }}" aria-label="Date for LASALLIAN RECOLLECTION 1" />
-              </label>
-            </div>
-
-            <div id="recollection-row-LASARE2" class="controls recollection-row {% if 'LASARE2' not in visible_recollection_codes %}is-hidden{% endif %}">
-              <label for="recollection-date-LASARE2">
-                <span>LASALLIAN RECOLLECTION 2 date</span>
-                <input id="recollection-date-LASARE2" type="date" name="recollection_date_LASARE2" value="{{ recollection_dates['LASARE2'] if recollection_dates and 'LASARE2' in recollection_dates else '' }}" aria-label="Date for LASALLIAN RECOLLECTION 2" />
-              </label>
-            </div>
-
-            <div id="recollection-row-LASARE3" class="controls recollection-row {% if 'LASARE3' not in visible_recollection_codes %}is-hidden{% endif %}">
-              <label for="recollection-date-LASARE3">
-                <span>LASALLIAN RECOLLECTION 3 date</span>
-                <input id="recollection-date-LASARE3" type="date" name="recollection_date_LASARE3" value="{{ recollection_dates['LASARE3'] if recollection_dates and 'LASARE3' in recollection_dates else '' }}" aria-label="Date for LASALLIAN RECOLLECTION 3" />
-              </label>
-            </div>
-          </div>
-
-          <div class="form-actions">
-            <button type="submit" id="generate-btn" aria-label="Generate calendar file from uploaded EAF">Generate calendar</button>
-            <button type="reset" id="clear-btn" class="secondary-button" aria-label="Clear uploaded file and start over">Clear and upload again</button>
-          </div>
-        </form>
-      </section>
-
-      {% if download_url %}
-        <section class="panel result-panel">
-          <div class="result-header">
-            <div>
-              <p class="eyebrow">Done</p>
-              <h2>Your calendar file is ready.</h2>
-            </div>
-            <a class="download-button" href="{{ download_url }}">Download .ics</a>
-          </div>
-          <div class="result-summary" aria-label="Generated calendar summary">
-            <div>
-              <span>Filename</span>
-              <strong>{{ generated_filename }}</strong>
-            </div>
-            <div>
-              <span>Courses</span>
-              <strong>{{ course_count }}</strong>
-            </div>
-            <div>
-              <span>Events</span>
-              <strong>{{ event_count }}</strong>
-            </div>
-            {% if recollection_count %}
-              <div>
-                <span>Recollections</span>
-                <strong>{{ recollection_count }}</strong>
-              </div>
-            {% endif %}
-          </div>
-          {% if generated_at %}
-            <p class="result-note">Generated at {{ generated_at }}.</p>
-          {% endif %}
-          <p class="result-note">Import the downloaded file into Google Calendar to view your timetable.</p>
-        </section>
-      {% endif %}
-
-      <footer class="privacy-notice">
-        <p>
-          <strong>Privacy Notice:</strong> We use Google Analytics to understand general site usage. Your uploaded PDF is processed in memory only and is never stored on our servers. All data extracted from the PDF is automatically deleted after processing.
-        </p>
-        <p>
-          <strong>Need help?</strong>
-          If you encounter bugs, email <a href="mailto:angelo_nuque@dlsu.edu.ph">angelo_nuque@dlsu.edu.ph</a> or report an issue on <a href="https://github.com/Stilsi-dev/EAFSchedulr/issues" target="_blank" rel="noopener">GitHub</a>.
-        </p>
-      </footer>
-
-      <footer class="lasallian-footer">
-        <p>Made by a Lasallian for Lasallians</p>
-      </footer>
-    </main>
-    <script src="{{ url_for('static', filename='app.js') }}"></script>
-  </body>
+	<head>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, initial-scale=1">
+		<meta name="description" content="EAF Schedulr - convert your EAF PDF into a calendar file.">
+		<title>EAF Schedulr</title>
+		<!-- Global site tag (gtag.js) - Google Analytics -->
+		<script async src="https://www.googletagmanager.com/gtag/js?id=G-LEEDEK781L"></script>
+		<script>
+			window.dataLayer = window.dataLayer || [];
+			function gtag(){dataLayer.push(arguments);}
+			gtag('js', new Date());
+			gtag('config', 'G-LEEDEK781L');
+		</script>
+		<link rel="stylesheet" href="{{ url_for('static', filename='assets/index.css') }}">
+		<script defer src="{{ url_for('static', filename='app.js') }}"></script>
+	</head>
+	<body>
+		<div id="root"></div>
+	</body>
 </html>
+
+

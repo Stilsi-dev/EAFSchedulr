@@ -31,6 +31,19 @@ from app.utils import (
 )
 
 
+def get_recollection_day_options(events: Iterable[Event]) -> dict[str, set[str]]:
+    """Collect the weekday codes seen for each recollection course code."""
+    day_options: dict[str, set[str]] = {}
+
+    for event in events:
+        if event.code not in RECOLLECTION_TITLES:
+            continue
+
+        day_options.setdefault(event.code, set()).add(event.day.strip().upper())
+
+    return day_options
+
+
 def validate_recollection_dates(
     events: Iterable[Event],
     recollection_dates: dict[str, date]
@@ -47,17 +60,24 @@ def validate_recollection_dates(
     Raises:
         ValueError: If date doesn't match weekday or date is missing
     """
-    for event in events:
-        if event.code not in RECOLLECTION_TITLES:
-            continue
-
-        recollection_date = recollection_dates.get(event.code)
+    for code, expected_days in get_recollection_day_options(events).items():
+        recollection_date = recollection_dates.get(code)
         if recollection_date is None:
-            raise ValueError(f"A specific recollection date is required for {RECOLLECTION_TITLES[event.code]}.")
+            raise ValueError(f"A specific recollection date is required for {RECOLLECTION_TITLES[code]}.")
 
-        if recollection_date.weekday() != DAY_TO_WEEKDAY[event.day]:
+        allowed_weekdays = {
+            DAY_TO_WEEKDAY[day]
+            for day in expected_days
+            if day in DAY_TO_WEEKDAY
+        }
+        if allowed_weekdays and recollection_date.weekday() not in allowed_weekdays:
+            allowed_labels = ", ".join(
+                DAY_LABELS[day]
+                for day in sorted(expected_days, key=lambda day: DAY_TO_WEEKDAY.get(day, 99))
+                if day in DAY_LABELS
+            )
             raise ValueError(
-                f"{RECOLLECTION_TITLES[event.code]} is scheduled on {DAY_LABELS[event.day]}. Please choose a {DAY_LABELS[event.day]} date."
+                f"{RECOLLECTION_TITLES[code]} is scheduled on {allowed_labels}. Please choose a {allowed_labels} date."
             )
 
 

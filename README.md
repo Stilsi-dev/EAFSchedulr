@@ -89,11 +89,15 @@ EAFtoGCAL_AH/
 │   └── services/
 │       ├── parser.py             # PDF parsing and validation
 │       └── calendar.py           # Calendar generation and preview formatting
+├── frontend/                      # React + Vite redesign source
+│   ├── src/                       # App source code and shadcn/ui components
+│   ├── index.html                 # Vite mount page
+│   └── package.json               # Frontend dependencies and scripts
 ├── static/
-│   ├── app.js                    # Client-side JavaScript
-│   └── styles.css                # Styling
+│   ├── app.js                    # Built frontend bundle served by Flask
+│   └── assets/index.css          # Built frontend stylesheet
 ├── templates/
-│   └── index.html                # HTML template
+│   └── index.html                # Flask shell that loads the bundled UI
 ├── run.py                        # Application entry point
 ├── README.md                     # This file
 └── requirements.txt              # Python dependencies

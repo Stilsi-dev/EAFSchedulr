@@ -1,14 +1,23 @@
-# Virtual Environment
-.venv/
-venv/
-ENV/
-env/
+# Testing
+/tests
+
+# Flask
+run.py
+*.db
+instance/
+.env
+.env.local
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.vite
 
 # Python
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
+**/__pycache__/
+*.pyc
+*.pyo
+*.pyd
 .Python
 build/
 develop-eggs/
@@ -22,41 +31,34 @@ parts/
 sdist/
 var/
 wheels/
-pip-wheel-metadata/
-share/python-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-MANIFEST
+.venv
+venv/
+ENV/
+env/
+.vscode/
+*.code-workspace
+
+# OS
+.DS_Store
+Thumbs.db
+.idea/
 
 # IDE
 .vscode/
-.idea/
 *.swp
 *.swo
 *~
-.DS_Store
+.project
+.pydevproject
+.settings/
 
-# Flask
-instance/
-.webassets-cache
-
-# Testing
-tests/
+# Build
+.cache/
+*.egg-info/
 .pytest_cache/
-.coverage
-htmlcov/
+/EAF Samples
 
-# Environment variables
-.env
-.env.local
-
-# OS
-Thumbs.db
-.DS_Store
-
-# Application-specific
-*.ics
-test-*.pdf
-generated_calendars/
-run.py
+frontend/vite.out.log
+frontend/vite.err.log
+*.out.log
+*.err.log

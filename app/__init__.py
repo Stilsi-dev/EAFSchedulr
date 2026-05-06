@@ -1,33 +1,35 @@
-"""Application factory and initialization.
+"""Flask application factory.
 
-This module implements the Flask application factory pattern,
-enabling flexible configuration and testing setup.
+Provides a simple `create_app` factory that constructs and configures
+the Flask application used by `run.py` and any WSGI server.
 """
+import os
+from pathlib import Path
 
 from flask import Flask
 
-from app.routes import bp
 
+def create_app() -> Flask:
+		"""Create and configure the Flask application.
 
-def create_app(config: dict | None = None) -> Flask:
-    """Create and configure the Flask application.
-    
-    Implements the application factory pattern for better testing
-    and configuration management.
-    
-    Args:
-        config: Optional dictionary of configuration values
-        
-    Returns:
-        Configured Flask application instance
-    """
-    app = Flask(__name__, template_folder="../templates", static_folder="../static")
-    app.secret_key = "eaf-to-gcal-secret"
-    
-    if config:
-        app.config.update(config)
-    
-    # Register blueprints
-    app.register_blueprint(bp)
-    
-    return app
+		- Uses the repository `static/` and `templates/` directories by default.
+		- Sets a secret key from the `FLASK_SECRET` environment variable (falls
+			back to a development key when not provided).
+		- Registers the main blueprint from `app.routes`.
+		"""
+		repo_root = Path(__file__).resolve().parent.parent
+		app = Flask(
+			__name__,
+			static_folder=str(repo_root / "static"),
+			template_folder=str(repo_root / "templates"),
+		)
+
+		# Use a provided secret in production; fall back for local development
+		app.secret_key = os.environ.get("FLASK_SECRET", "dev-secret-please-change")
+
+		# Register routes
+		from . import routes
+
+		app.register_blueprint(routes.bp)
+
+		return app
