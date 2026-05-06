@@ -65,6 +65,7 @@ type CourseSummary = {
   code: string;
   sectionCode: string;
   courseName: string;
+  hasRecollection: boolean;
   meetingGroups: Array<{
     days: string[];
     startTime: string;
@@ -337,6 +338,7 @@ export default function App() {
     inspectedEvents.reduce((summaries, event) => {
       const existingSummary = summaries.get(event.code);
       if (existingSummary) {
+        existingSummary.hasRecollection = existingSummary.hasRecollection || event.is_recollection;
         const existingMeetingGroup = existingSummary.meetingGroups.find(
           (meetingGroup) =>
             meetingGroup.startTime === event.start_time
@@ -364,6 +366,7 @@ export default function App() {
         code: event.code,
         sectionCode: event.title.replace(`${event.code} `, "").trim(),
         courseName: event.course_name,
+        hasRecollection: event.is_recollection,
         meetingGroups: [
           {
             days: [event.day],
@@ -674,40 +677,42 @@ export default function App() {
                 </div>
               </div>
 
-              <div className="border-t border-gray-200/50 dark:border-slate-600/30 pt-8">
-                <div className="space-y-2 mb-6">
-                  <h3 className="text-lg text-gray-900 dark:text-gray-100">Lasallian Recollection</h3>
-                  <p className="text-sm text-gray-600 dark:text-gray-400">If your EAF includes LASARE (LASALLIAN RECOLLECTION) 1, 2, or 3, select the exact date.</p>
-                </div>
+              {hasLasallianRecollection && (
+                <div className="border-t border-gray-200/50 dark:border-slate-600/30 pt-8">
+                  <div className="space-y-2 mb-6">
+                    <h3 className="text-lg text-gray-900 dark:text-gray-100">Lasallian Recollection</h3>
+                    <p className="text-sm text-gray-600 dark:text-gray-400">If your EAF includes LASARE (LASALLIAN RECOLLECTION) 1, 2, or 3, select the exact date.</p>
+                  </div>
 
-                <div className="grid sm:grid-cols-2 gap-6">
-                  <div className="space-y-2">
-                    <label htmlFor="lasare-date" className="block text-gray-700 dark:text-gray-300 pl-1">
-                        Recollection date {hasLasallianRecollection ? <span className="text-rose-500">*</span> : <span className="text-gray-400">(optional)</span>}
-                    </label>
-                    <input
-                      type="date"
-                      id="lasare-date"
-                      value={lasareDate}
-                      onChange={(e) => setLasareDate(e.target.value)}
-                        required={hasLasallianRecollection}
-                      aria-invalid={Boolean(validationErrors.lasareDate)}
-                      className={`w-full px-5 py-3.5 bg-white/70 dark:bg-slate-700/50 border rounded-2xl focus:outline-none focus:ring-2 focus:border-transparent transition-all backdrop-blur-sm hover:bg-white dark:hover:bg-slate-700/70 text-gray-900 dark:text-gray-100 ${
-                        validationErrors.lasareDate
-                          ? "border-red-300 dark:border-red-500/50 focus:ring-red-500 dark:focus:ring-red-400"
-                          : "border-gray-200/50 dark:border-slate-600/50 focus:ring-emerald-500 dark:focus:ring-emerald-400"
-                      }`}
-                    />
-                    {/* Date preview intentionally hidden here; shown only on recollection course cards */}
-                    {validationErrors.lasareDate && (
-                      <div className="flex items-center gap-2 text-sm text-red-600 dark:text-red-400 mt-2 animate-in fade-in slide-in-from-top-1 duration-200">
-                        <AlertCircle className="w-4 h-4 flex-shrink-0" />
-                        <span>{validationErrors.lasareDate}</span>
-                      </div>
-                    )}
+                  <div className="grid sm:grid-cols-2 gap-6">
+                    <div className="space-y-2">
+                      <label htmlFor="lasare-date" className="block text-gray-700 dark:text-gray-300 pl-1">
+                          Recollection date <span className="text-rose-500">*</span>
+                      </label>
+                      <input
+                        type="date"
+                        id="lasare-date"
+                        value={lasareDate}
+                        onChange={(e) => setLasareDate(e.target.value)}
+                        required
+                        aria-invalid={Boolean(validationErrors.lasareDate)}
+                        className={`w-full px-5 py-3.5 bg-white/70 dark:bg-slate-700/50 border rounded-2xl focus:outline-none focus:ring-2 focus:border-transparent transition-all backdrop-blur-sm hover:bg-white dark:hover:bg-slate-700/70 text-gray-900 dark:text-gray-100 ${
+                          validationErrors.lasareDate
+                            ? "border-red-300 dark:border-red-500/50 focus:ring-red-500 dark:focus:ring-red-400"
+                            : "border-gray-200/50 dark:border-slate-600/50 focus:ring-emerald-500 dark:focus:ring-emerald-400"
+                        }`}
+                      />
+                      {/* Date preview intentionally hidden here; shown only on recollection course cards */}
+                      {validationErrors.lasareDate && (
+                        <div className="flex items-center gap-2 text-sm text-red-600 dark:text-red-400 mt-2 animate-in fade-in slide-in-from-top-1 duration-200">
+                          <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                          <span>{validationErrors.lasareDate}</span>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
-              </div>
+              )}
             </div>
 
             {/* CTA Area */}
@@ -883,6 +888,18 @@ export default function App() {
                                 {displayCourseName}
                               </p>
 
+                              <div className="mt-2 flex items-center justify-between gap-2 rounded-2xl bg-slate-50/80 px-3 py-2 text-[13px] text-gray-500 dark:bg-slate-900/30 dark:text-gray-400">
+                                <span className="inline-flex items-center gap-1.5">
+                                  <Calendar className="h-3 w-3 opacity-60" />
+                                  <span className="leading-none">{course.hasRecollection && hasLasallianRecollection && lasareDate ? "One-time date" : "Recurring weekly"}</span>
+                                </span>
+                                {course.hasRecollection && hasLasallianRecollection && lasareDate ? (
+                                  <DatePill date={lasareDate} />
+                                ) : (
+                                  <span className="text-gray-400 dark:text-gray-500">Weekly</span>
+                                )}
+                              </div>
+
                               {/* Schedule */}
                               <div className="mt-5 space-y-3">
                                 {course.meetingGroups.map((meetingGroup) => {
@@ -914,13 +931,6 @@ export default function App() {
                                                 ? meetingGroup.locations.join(" / ")
                                                 : "No location listed"}
                                             </span>
-
-                                            {/* If this day is a recollection weekday and user selected a date, show formatted date */}
-                                            {hasLasallianRecollection && lasareDate && recollectionWeekdays.includes(day) && (course.courseName.toLowerCase().includes('recollect') || course.code.toUpperCase().startsWith('LASARE')) && (
-                                              <div className="col-start-1 col-span-3 mt-0.5 flex items-center justify-center">
-                                                <DatePill date={lasareDate} />
-                                              </div>
-                                            )}
                                           </div>
                                         ))}
                                       </div>
