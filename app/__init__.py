@@ -12,7 +12,7 @@ from flask import Flask
 def create_app() -> Flask:
 		"""Create and configure the Flask application.
 
-		- Uses the repository `static/` and `templates/` directories by default.
+		- Serves static files from the repository `public/` directory.
 		- Sets a secret key from the `FLASK_SECRET` environment variable (falls
 			back to a development key when not provided).
 		- Registers the main blueprint from `app.routes`.
@@ -20,8 +20,7 @@ def create_app() -> Flask:
 		repo_root = Path(__file__).resolve().parent.parent
 		app = Flask(
 			__name__,
-			static_folder=str(repo_root / "static"),
-			template_folder=str(repo_root / "templates"),
+			static_folder=str(repo_root / "public"),
 		)
 
 		# Use a provided secret in production; fall back for local development

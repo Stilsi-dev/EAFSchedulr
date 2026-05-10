@@ -9,7 +9,7 @@ from datetime import date, datetime
 from io import BytesIO
 from typing import Any
 
-from flask import Blueprint, flash, jsonify, redirect, render_template, request, send_file, session, url_for
+from flask import Blueprint, flash, jsonify, redirect, request, send_file, session, url_for
 from werkzeug.datastructures import FileStorage
 
 from app.config import DEFAULT_WEEKS, RECOLLECTION_TITLES
@@ -61,29 +61,16 @@ def format_recollection_summary(recollection_dates: dict[str, date]) -> list[str
 
 
 @bp.get("/")
-def index() -> str:
-    """Render the main page with upload form.
+def index():
+    """Serve the main React app HTML.
     
     Returns:
-        Rendered HTML template
+        The index.html file from the public directory
     """
-    csrf_token = generate_csrf_token()
-    return render_template(
-        "index.html",
-        events=None,
-        download_url=None,
-        generated_filename="",
-        generated_at=None,
-        term_start=date.today().isoformat(),
-        weeks=DEFAULT_WEEKS,
-        recollection_dates={},
-        has_recollection=False,
-        visible_recollection_codes=[],
-        recollection_summary=[],
-        timetable={},
-        csrf_token=csrf_token,
-        course_count=0,
-        event_count=0,
+    from flask import current_app
+    return send_file(
+        current_app.static_folder + "/index.html",
+        mimetype="text/html"
     )
 
 
@@ -272,35 +259,24 @@ def generate() -> Any:
     download_url = url_for("main.download_ics", token=token)
     generated_filename = GENERATED_FILENAMES[token]
 
-    if wants_json:
-        return jsonify(
-            {
-                "download_url": download_url,
-                "generated_filename": generated_filename,
-                "generated_at": generated_at,
-                "event_count": len(events),
-                "course_count": len({event.code for event in events}),
-            }
-        ), 200
-
-    csrf_token = generate_csrf_token()
-    return render_template(
-        "index.html",
-        events=[event.__dict__ for event in events],
-        download_url=download_url,
-        generated_filename=generated_filename,
-        generated_at=generated_at,
-        term_start=term_start.isoformat(),
-        weeks=weeks,
-        recollection_dates={code: recollection_dates.get(code, date.today()).isoformat() for code in RECOLLECTION_TITLES},
-        has_recollection=has_recollection,
-        visible_recollection_codes=recollection_codes,
-        recollection_summary=format_recollection_summary(recollection_dates),
-        timetable=build_timetable_preview(events, recollection_dates),
-        csrf_token=csrf_token,
-        course_count=len({event.code for event in events}),
-        event_count=len(events),
-    )
+    # Always return JSON for the React app to handle the UI
+    return jsonify(
+        {
+            "download_url": download_url,
+            "generated_filename": generated_filename,
+            "generated_at": generated_at,
+            "events": [event.__dict__ for event in events],
+            "term_start": term_start.isoformat(),
+            "weeks": weeks,
+            "recollection_dates": {code: recollection_dates.get(code, date.today()).isoformat() for code in RECOLLECTION_TITLES},
+            "has_recollection": has_recollection,
+            "visible_recollection_codes": recollection_codes,
+            "recollection_summary": format_recollection_summary(recollection_dates),
+            "timetable": build_timetable_preview(events, recollection_dates),
+            "course_count": len({event.code for event in events}),
+            "event_count": len(events),
+        }
+    ), 200
 
 
 @bp.get("/download/<token>")

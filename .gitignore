@@ -32,6 +32,7 @@ sdist/
 var/
 wheels/
 .venv
+.venv/
 venv/
 ENV/
 env/
@@ -57,6 +58,9 @@ Thumbs.db
 *.egg-info/
 .pytest_cache/
 /EAF Samples
+EAF Samples/
+*.log
+*.sqlite3
 
 frontend/vite.out.log
 frontend/vite.err.log
