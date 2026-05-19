@@ -66,4 +66,5 @@ frontend/vite.out.log
 frontend/vite.err.log
 *.out.log
 *.err.log
+public.bak/
 TODO
