@@ -18,6 +18,11 @@ New-Item -ItemType Directory -Path (Join-Path $public 'assets') -Force | Out-Nul
 # Copy all dist assets
 Copy-Item -Path (Join-Path $src 'assets\*') -Destination (Join-Path $public 'assets') -Recurse -Force
 
+# Copy static files at dist root (e.g., favicon/logo files)
+Get-ChildItem -Path $src -File | Where-Object { $_.Name -ne 'index.html' } | ForEach-Object {
+    Copy-Item -Path $_.FullName -Destination (Join-Path $public $_.Name) -Force
+}
+
 # Copy index.html from dist to public
 if(Test-Path (Join-Path $src 'index.html')){
     Copy-Item -Path (Join-Path $src 'index.html') -Destination (Join-Path $public 'index.html') -Force

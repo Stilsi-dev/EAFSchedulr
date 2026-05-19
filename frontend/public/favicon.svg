@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="EAF Schedulr favicon">
+  <rect x="8" y="8" width="48" height="48" rx="14" fill="#ecfdf5" />
+  <path d="M18 23.5A5.5 5.5 0 0 1 23.5 18H40a5 5 0 0 1 5 5v20a5 5 0 0 1-5 5H24a6 6 0 0 1-6-6V23.5Z" fill="none" stroke="#059669" stroke-width="3.5" stroke-linejoin="round" />
+  <path d="M23 21v-4M41 21v-4M22 30h20M22 37h12" fill="none" stroke="#34d399" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" />
+  <path d="m31 43 4 4 9-10" fill="none" stroke="#059669" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" />
+</svg>

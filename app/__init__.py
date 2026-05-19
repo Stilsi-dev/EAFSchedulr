@@ -21,6 +21,7 @@ def create_app() -> Flask:
 		app = Flask(
 			__name__,
 			static_folder=str(repo_root / "public"),
+			static_url_path="",
 		)
 
 		# Use a provided secret in production; fall back for local development

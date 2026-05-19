@@ -400,8 +400,12 @@ export default function App() {
         {/* Brand & Theme Toggle */}
         <div className="flex items-center justify-between mb-12 sm:mb-16">
           <div className="flex items-center gap-2">
-            <Sparkles className="w-6 h-6 text-emerald-600 dark:text-emerald-400" />
-            <span className="tracking-tight text-gray-900 dark:text-white text-lg">Schedulr</span>
+            <img
+              src="/schedulr-logo.svg"
+              alt="EAF Schedulr logo"
+              className="w-6 h-6"
+            />
+            <span className="tracking-tight text-gray-900 dark:text-white text-lg font-medium">EAF Schedulr</span>
           </div>
 
           {/* Dark Mode Toggle */}
@@ -419,8 +423,8 @@ export default function App() {
         </div>
 
         {/* Hero Section */}
-        <div className="grid lg:grid-cols-[1fr,400px] gap-8 lg:gap-16 items-start mb-16 sm:mb-20">
-          <div className="space-y-8">
+        <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_420px] lg:gap-16 items-start lg:min-h-[420px] mb-16 sm:mb-20">
+          <div className="mx-auto flex w-full max-w-3xl flex-col items-center space-y-8 text-center lg:items-start lg:text-left self-center">
             <div className="space-y-5">
               <div className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-50 dark:bg-emerald-500/15 border border-emerald-200 dark:border-emerald-500/40 rounded-full backdrop-blur-sm">
                 <span className="relative flex h-2 w-2">
@@ -430,26 +434,26 @@ export default function App() {
                 <span className="text-sm text-emerald-700 dark:text-emerald-300">Built for DLSU students</span>
               </div>
 
-              <h1 className="text-4xl sm:text-5xl lg:text-6xl text-gray-900 dark:text-white leading-[1.1] tracking-tight">
+              <h1 className="text-4xl sm:text-5xl lg:text-7xl text-gray-900 dark:text-white leading-[1.1] tracking-tight">
                 Turn your EAF into your class schedule <span className="text-emerald-600 dark:text-emerald-400">instantly.</span>
               </h1>
 
-              <p className="text-lg sm:text-xl text-gray-600 dark:text-gray-400 leading-relaxed">
+              <p className="text-lg sm:text-2xl text-gray-600 dark:text-gray-400 leading-relaxed">
                 Upload your EAF and get a ready-to-use Google Calendar in seconds.
               </p>
             </div>
 
-            <div className="flex flex-col sm:flex-row gap-3">
+            <div className="flex flex-col sm:flex-row gap-3 justify-center lg:justify-start">
               <button
                 onClick={scrollToUpload}
-                className="group px-7 py-3.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-2xl transition-all duration-300 shadow-lg shadow-emerald-500/30 hover:shadow-xl hover:shadow-emerald-500/40 hover:-translate-y-0.5 flex items-center justify-center gap-2"
+                className="group px-8 py-4 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-2xl transition-all duration-300 shadow-lg shadow-emerald-500/30 hover:shadow-xl hover:shadow-emerald-500/40 hover:-translate-y-0.5 flex items-center justify-center gap-2"
               >
                 Create my schedule
                 <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
               </button>
               <button
                 onClick={triggerFileUpload}
-                className="px-7 py-3.5 bg-white/80 dark:bg-slate-700/60 backdrop-blur-sm hover:bg-white dark:hover:bg-slate-700/80 text-emerald-700 dark:text-emerald-300 rounded-2xl border border-emerald-200 dark:border-emerald-500/40 transition-all duration-300 shadow-md hover:shadow-lg hover:-translate-y-0.5"
+                className="px-8 py-4 bg-white/80 dark:bg-slate-700/60 backdrop-blur-sm hover:bg-white dark:hover:bg-slate-700/80 text-emerald-700 dark:text-emerald-300 rounded-2xl border border-emerald-200 dark:border-emerald-500/40 transition-all duration-300 shadow-md hover:shadow-lg hover:-translate-y-0.5"
               >
                 Upload EAF
               </button>
@@ -457,40 +461,40 @@ export default function App() {
           </div>
 
           {/* Workflow Card - Glass morphism */}
-          <div className="bg-white/60 dark:bg-slate-800/60 backdrop-blur-xl rounded-3xl shadow-2xl shadow-emerald-500/10 dark:shadow-emerald-500/20 p-8 border border-white/50 dark:border-emerald-500/20">
+          <div className="w-full max-w-lg justify-self-center lg:justify-self-end lg:mt-4 bg-white/60 dark:bg-slate-800/60 backdrop-blur-xl rounded-3xl shadow-2xl shadow-emerald-500/10 dark:shadow-emerald-500/20 p-8 border border-white/50 dark:border-emerald-500/20">
             <div className="flex items-center gap-2 mb-6">
               <div className="w-1 h-6 bg-gradient-to-b from-emerald-600 to-teal-600 dark:from-emerald-400 dark:to-teal-400 rounded-full shadow-lg dark:shadow-emerald-400/50"></div>
-              <h2 className="text-xl text-gray-900 dark:text-gray-100">How it works</h2>
+              <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100">How it works</h2>
             </div>
 
-            <div className="space-y-6">
-              <div className="group flex gap-5 items-start p-4 rounded-2xl hover:bg-white/80 dark:hover:bg-slate-700/40 transition-all duration-300">
-                <div className="flex-shrink-0 w-14 h-14 bg-gradient-to-br from-emerald-500 to-emerald-600 dark:from-emerald-400 dark:to-emerald-500 rounded-2xl flex items-center justify-center shadow-lg shadow-emerald-500/30 dark:shadow-emerald-400/20 group-hover:scale-110 transition-transform duration-300">
-                  <span className="text-white text-xl">1</span>
+            <div className="space-y-4">
+              <div className="group flex items-start gap-4 p-4 rounded-2xl hover:bg-white/80 dark:hover:bg-slate-700/40 transition-all duration-300">
+                <div className="flex-shrink-0 w-12 h-12 bg-gradient-to-br from-emerald-500 to-emerald-600 dark:from-emerald-400 dark:to-emerald-500 rounded-2xl flex items-center justify-center shadow-lg shadow-emerald-500/30 dark:shadow-emerald-400/20 group-hover:scale-110 transition-transform duration-300">
+                  <span className="text-white text-lg">1</span>
                 </div>
-                <div className="pt-1">
+                <div className="pt-0.5">
                   <h3 className="text-gray-900 dark:text-gray-100 mb-1.5">Upload</h3>
-                  <p className="text-gray-600 dark:text-gray-400 text-sm leading-relaxed">Upload your EAF PDF.</p>
+                  <p className="text-gray-600 dark:text-gray-400 text-base leading-relaxed">Upload your latest Archers Hub EAF PDF.</p>
                 </div>
               </div>
 
-              <div className="group flex gap-5 items-start p-4 rounded-2xl hover:bg-white/80 dark:hover:bg-slate-700/40 transition-all duration-300">
-                <div className="flex-shrink-0 w-14 h-14 bg-gradient-to-br from-teal-500 to-teal-600 dark:from-teal-400 dark:to-teal-500 rounded-2xl flex items-center justify-center shadow-lg shadow-teal-500/30 dark:shadow-teal-400/20 group-hover:scale-110 transition-transform duration-300">
-                  <span className="text-white text-xl">2</span>
+              <div className="group flex items-start gap-4 p-4 rounded-2xl hover:bg-white/80 dark:hover:bg-slate-700/40 transition-all duration-300">
+                <div className="flex-shrink-0 w-12 h-12 bg-gradient-to-br from-teal-500 to-teal-600 dark:from-teal-400 dark:to-teal-500 rounded-2xl flex items-center justify-center shadow-lg shadow-teal-500/30 dark:shadow-teal-400/20 group-hover:scale-110 transition-transform duration-300">
+                  <span className="text-white text-lg">2</span>
                 </div>
-                <div className="pt-1">
+                <div className="pt-0.5">
                   <h3 className="text-gray-900 dark:text-gray-100 mb-1.5">Review</h3>
-                  <p className="text-gray-600 dark:text-gray-400 text-sm leading-relaxed">Set your start date and number of weeks. Adjust details if needed.</p>
+                  <p className="text-gray-600 dark:text-gray-400 text-base leading-relaxed">Adjust schedule details and generate a ready-to-import .ics calendar file.</p>
                 </div>
               </div>
 
-              <div className="group flex gap-5 items-start p-4 rounded-2xl hover:bg-white/80 dark:hover:bg-slate-700/40 transition-all duration-300">
-                <div className="flex-shrink-0 w-14 h-14 bg-gradient-to-br from-emerald-500 to-teal-600 dark:from-emerald-400 dark:to-teal-500 rounded-2xl flex items-center justify-center shadow-lg shadow-emerald-500/30 dark:shadow-emerald-400/20 group-hover:scale-110 transition-transform duration-300">
-                  <span className="text-white text-xl">3</span>
+              <div className="group flex items-start gap-4 p-4 rounded-2xl hover:bg-white/80 dark:hover:bg-slate-700/40 transition-all duration-300">
+                <div className="flex-shrink-0 w-12 h-12 bg-gradient-to-br from-emerald-500 to-teal-600 dark:from-emerald-400 dark:to-teal-500 rounded-2xl flex items-center justify-center shadow-lg shadow-emerald-500/30 dark:shadow-emerald-400/20 group-hover:scale-110 transition-transform duration-300">
+                  <span className="text-white text-lg">3</span>
                 </div>
-                <div className="pt-1">
+                <div className="pt-0.5">
                   <h3 className="text-gray-900 dark:text-gray-100 mb-1.5">Import</h3>
-                  <p className="text-gray-600 dark:text-gray-400 text-sm leading-relaxed">Download your calendar (.ics) file and import it into Google Calendar.</p>
+                  <p className="text-gray-600 dark:text-gray-400 text-base leading-relaxed">Import your schedule into Google Calendar securely. Files are processed in memory only.</p>
                 </div>
               </div>
             </div>
@@ -498,7 +502,7 @@ export default function App() {
         </div>
 
         {/* Upload Section - Glass morphism */}
-        <div ref={uploadSectionRef} className="bg-white/60 dark:bg-slate-800/60 backdrop-blur-xl rounded-3xl shadow-xl shadow-emerald-500/10 dark:shadow-emerald-500/20 p-6 sm:p-8 mb-12 border border-white/50 dark:border-emerald-500/20">
+        <div ref={uploadSectionRef} className="-mt-10 lg:-mt-14 bg-white/60 dark:bg-slate-800/60 backdrop-blur-xl rounded-3xl shadow-xl shadow-emerald-500/10 dark:shadow-emerald-500/20 p-6 sm:p-8 mb-6 border border-white/50 dark:border-emerald-500/20">
           <div className="flex items-center gap-3 mb-6">
             <div className="w-10 h-10 bg-gradient-to-br from-emerald-500 to-teal-600 dark:from-emerald-400 dark:to-teal-500 rounded-xl flex items-center justify-center shadow-lg dark:shadow-emerald-400/30">
               <FileText className="w-5 h-5 text-white" />
