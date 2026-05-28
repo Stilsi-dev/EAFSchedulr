@@ -12,6 +12,7 @@ from typing import Any
 from flask import Blueprint, current_app, flash, jsonify, redirect, render_template, request, send_file, session, url_for
 from werkzeug.datastructures import FileStorage
 
+from app.extensions import limiter
 from app.config import APP_TZ, DEFAULT_WEEKS, RECOLLECTION_TITLES
 from app.services.calendar import build_ics, build_timetable_preview, validate_recollection_dates
 from app.services.parser import build_schedule_filename, parse_eaf_pdf, validate_pdf_file
@@ -71,6 +72,7 @@ def index() -> str:
 
 
 @bp.post("/inspect")
+@limiter.limit("20 per minute")
 def inspect() -> tuple[dict[str, Any], int]:
     """Inspect uploaded PDF and return course and recollection info.
     
@@ -92,8 +94,8 @@ def inspect() -> tuple[dict[str, Any], int]:
         events, _ = parse_eaf_pdf(content, filename)  # type: ignore[arg-type]
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
-    except Exception as exc:
-        return jsonify({"error": f"An unexpected error occurred while reading the PDF: {str(exc)}"}), 400
+    except Exception:
+        return jsonify({"error": "An unexpected error occurred while reading the PDF. Please try a different file."}), 400
 
     if not events:
         return jsonify({"error": "No scheduled events were found in the uploaded EAF. The file may not be a valid Enrollment Assessment Form."}), 400
@@ -110,6 +112,7 @@ def inspect() -> tuple[dict[str, Any], int]:
 
 
 @bp.post("/generate")
+@limiter.limit("10 per minute")
 def generate() -> tuple[str, int] | str:
     """Generate calendar file from uploaded EAF PDF.
     
@@ -141,8 +144,8 @@ def generate() -> tuple[str, int] | str:
     except ValueError as exc:
         flash(str(exc))
         return redirect(url_for("main.index"))
-    except Exception as exc:
-        flash(f"An unexpected error occurred: {str(exc)}")
+    except Exception:
+        flash("An unexpected error occurred. Please try a different file.")
         return redirect(url_for("main.index"))
 
     if not events:

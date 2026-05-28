@@ -1,17 +1,27 @@
 """In-memory store for generated ICS calendar files."""
 
+import time
+
 
 class CalendarStore:
+    TTL_SECONDS = 300  # 5 minutes
+
     def __init__(self) -> None:
-        self._content: dict[str, str] = {}
-        self._names: dict[str, str] = {}
+        self._entries: dict[str, tuple[str, str, float]] = {}
 
     def put(self, token: str, content: str, filename: str) -> None:
-        self._content[token] = content
-        self._names[token] = filename
+        self._prune()
+        self._entries[token] = (content, filename, time.monotonic())
 
     def pop(self, token: str) -> tuple[str, str] | None:
-        content = self._content.pop(token, None)
-        if content is None:
+        entry = self._entries.pop(token, None)
+        if entry is None:
             return None
-        return content, self._names.pop(token, "eaf-calendar.ics")
+        content, filename, _ = entry
+        return content, filename
+
+    def _prune(self) -> None:
+        now = time.monotonic()
+        expired = [t for t, (_, _, ts) in self._entries.items() if now - ts > self.TTL_SECONDS]
+        for t in expired:
+            del self._entries[t]
