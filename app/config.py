@@ -1,5 +1,7 @@
 """Application configuration and constants."""
 
+import re
+
 # Timezone Configuration
 ICS_TIMEZONE_ID = "Asia/Manila"
 
@@ -39,3 +41,12 @@ TIMETABLE_START_MINUTES = 7 * 60
 TIMETABLE_END_MINUTES = 20 * 60
 TIMETABLE_SLOT_MINUTES = 30
 TIMETABLE_SLOT_HEIGHT = 36
+
+# Schedule Pattern
+SCHEDULE_PATTERN = re.compile(
+    r"(MON|TUE|WED|THU|FRI|SAT)\s*\|\s*"
+    r"([0-9]{1,2}:[0-9]{2}\s*[AP]M)\s*-\s*"
+    r"([0-9]{1,2}:[0-9]{2}\s*[AP]M)"
+    r"(?:\s*\|\s*([^,]+))?",
+    re.IGNORECASE,
+)
