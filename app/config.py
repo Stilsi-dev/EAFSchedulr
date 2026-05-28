@@ -1,9 +1,11 @@
 """Application configuration and constants."""
 
 import re
+from datetime import timedelta, timezone
 
 # Timezone Configuration
 ICS_TIMEZONE_ID = "Asia/Manila"
+APP_TZ: timezone = timezone(timedelta(hours=8), name="PHT")
 
 # PDF Configuration
 DEFAULT_WEEKS = 14

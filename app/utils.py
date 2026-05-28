@@ -5,11 +5,7 @@ dates in various formats (iCalendar, display-friendly, etc.).
 """
 
 import re
-from datetime import date, datetime, time, timedelta, timezone
-
-# Timezone for Manila (UTC+8)
-APP_TZ: timezone = timezone(timedelta(hours=8), name="PHT")
-ICS_TIMEZONE_ID: str = "Asia/Manila"
+from datetime import date, datetime, time, timedelta
 
 
 def normalize_text(value: str) -> str:

@@ -9,22 +9,16 @@ from datetime import date, datetime
 from io import BytesIO
 from typing import Any
 
-from flask import Blueprint, flash, jsonify, redirect, render_template, request, send_file, session, url_for
+from flask import Blueprint, current_app, flash, jsonify, redirect, render_template, request, send_file, session, url_for
 from werkzeug.datastructures import FileStorage
 
-from app.config import DEFAULT_WEEKS, RECOLLECTION_TITLES
+from app.config import APP_TZ, DEFAULT_WEEKS, RECOLLECTION_TITLES
 from app.services.calendar import build_ics, build_timetable_preview, validate_recollection_dates
 from app.services.parser import build_schedule_filename, parse_eaf_pdf, validate_pdf_file
-from app.utils import format_display_datetime, APP_TZ
+from app.utils import format_display_datetime
 
 # Blueprint for all routes
 bp = Blueprint("main", __name__)
-
-# Storage for generated ICS files (simple in-memory cache)
-# Maps temporary token -> ICS content
-GENERATED_ICS: dict[str, str] = {}
-# Maps temporary token -> downloaded filename
-GENERATED_FILENAMES: dict[str, str] = {}
 
 
 def generate_csrf_token() -> str:
@@ -87,13 +81,15 @@ def inspect() -> tuple[dict[str, Any], int]:
         JSON response with course/recollection info or error message
     """
     uploaded_file: FileStorage | None = request.files.get("eaf_pdf")
-    
-    is_valid, error_msg = validate_pdf_file(uploaded_file)
+    content: bytes | None = uploaded_file.read() if uploaded_file else None
+    filename: str = (uploaded_file.filename or "") if uploaded_file else ""
+
+    is_valid, error_msg = validate_pdf_file(content, filename)
     if not is_valid:
         return jsonify({"error": error_msg}), 400
 
     try:
-        events = parse_eaf_pdf(uploaded_file)
+        events, _ = parse_eaf_pdf(content, filename)  # type: ignore[arg-type]
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
     except Exception as exc:
@@ -130,16 +126,18 @@ def generate() -> tuple[str, int] | str:
         return redirect(url_for("main.index"))
     
     uploaded_file: FileStorage | None = request.files.get("eaf_pdf")
-    
+    content: bytes | None = uploaded_file.read() if uploaded_file else None
+    filename: str = (uploaded_file.filename or "") if uploaded_file else ""
+
     # Validate file
-    is_valid, error_msg = validate_pdf_file(uploaded_file)
+    is_valid, error_msg = validate_pdf_file(content, filename)
     if not is_valid:
         flash(error_msg)
         return redirect(url_for("main.index"))
 
     # Parse PDF
     try:
-        events = parse_eaf_pdf(uploaded_file)
+        events, metadata = parse_eaf_pdf(content, filename)  # type: ignore[arg-type]
     except ValueError as exc:
         flash(str(exc))
         return redirect(url_for("main.index"))
@@ -196,14 +194,9 @@ def generate() -> tuple[str, int] | str:
     
     # Store generated calendar for download
     token = uuid.uuid4().hex
-    GENERATED_ICS[token] = ics_content
-    GENERATED_FILENAMES[token] = build_schedule_filename(uploaded_file)
+    schedule_filename = build_schedule_filename(metadata)
+    current_app.calendar_store.put(token, ics_content, schedule_filename)  # type: ignore[attr-defined]
     generated_at = format_display_datetime(datetime.now(tz=APP_TZ))
-
-    try:
-        uploaded_file.close()
-    except Exception:  # noqa: BLE001
-        pass
 
     download_url = url_for("main.download_ics", token=token)
     csrf_token = generate_csrf_token()
@@ -212,7 +205,7 @@ def generate() -> tuple[str, int] | str:
         events=[event.__dict__ for event in events],
         download_url=download_url,
         generated_at=generated_at,
-        generated_filename=GENERATED_FILENAMES[token],
+        generated_filename=schedule_filename,
         term_start=term_start.isoformat(),
         weeks=weeks,
         recollection_dates={code: recollection_dates.get(code, date.today()).isoformat() for code in RECOLLECTION_TITLES},
@@ -239,28 +232,18 @@ def download_ics(token: str):
     Returns:
         File download response or redirect if token invalid/expired
     """
-    ics_content = GENERATED_ICS.get(token)
-    if ics_content is None:
+    result = current_app.calendar_store.pop(token)  # type: ignore[attr-defined]
+    if result is None:
         flash("Download link expired. Please generate a new calendar.")
         return redirect(url_for("main.index"))
 
-    download_name = GENERATED_FILENAMES.get(token, "eaf-calendar.ics")
+    ics_content, download_name = result
     buffer = BytesIO(ics_content.encode("utf-8"))
     buffer.seek(0)
-    
-    def cleanup() -> None:
-        """Remove token and ICS content from storage."""
-        GENERATED_ICS.pop(token, None)
-        GENERATED_FILENAMES.pop(token, None)
-    
-    try:
-        response = send_file(
-            buffer,
-            mimetype="text/calendar",
-            as_attachment=True,
-            download_name=download_name,
-        )
-    finally:
-        cleanup()
-    
-    return response
+
+    return send_file(
+        buffer,
+        mimetype="text/calendar",
+        as_attachment=True,
+        download_name=download_name,
+    )

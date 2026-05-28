@@ -5,84 +5,81 @@ De La Salle University Enrollment Assessment Forms.
 """
 
 import re
-from typing import Iterable
+from io import BytesIO
 
 from pypdf import PdfReader
-from werkzeug.datastructures import FileStorage
-from werkzeug.utils import secure_filename
 
 from app.config import MAX_PDF_SIZE_BYTES, MAX_PDF_SIZE_MB, SCHEDULE_PATTERN
-from app.models import Event
+from app.models import EafMetadata, Event
 from app.utils import normalize_text, standardize_location
 
 
-def validate_pdf_file(uploaded_file: FileStorage | None) -> tuple[bool, str]:
-    """Validate uploaded PDF file for size and format.
-    
-    Checks that:
-    - File exists and has a filename
-    - File has .pdf extension
-    - File is not empty
-    - File size is within MAX_PDF_SIZE_BYTES limit
-    
+def validate_pdf_file(content: bytes | None, filename: str) -> tuple[bool, str]:
+    """Validate PDF content for size and format.
+
     Args:
-        uploaded_file: Flask FileStorage object from form upload
-        
+        content: Raw PDF bytes, or None if no file was provided
+        filename: Original filename from the upload
+
     Returns:
         Tuple of (is_valid, error_message)
-        - If valid: (True, "")
-        - If invalid: (False, error_description)
     """
-    if not uploaded_file or uploaded_file.filename == "":
+    if content is None or not filename:
         return False, "Please upload a file."
-    
-    filename = secure_filename(uploaded_file.filename or "")
+
     if not filename.lower().endswith(".pdf"):
         return False, "Only PDF files are accepted. Please upload a valid PDF file."
-    
-    # Check file size
-    uploaded_file.seek(0, 2)  # Seek to end
-    file_size = uploaded_file.tell()
-    uploaded_file.seek(0)  # Reset to start
-    
+
+    file_size = len(content)
+
     if file_size == 0:
         return False, "The uploaded file is empty. Please upload a valid PDF file."
-    
+
     if file_size > MAX_PDF_SIZE_BYTES:
         return False, f"File is too large. Maximum size is {MAX_PDF_SIZE_MB}MB. Your file is {file_size / 1024 / 1024:.1f}MB."
-    
+
     return True, ""
 
 
-def parse_eaf_pdf(uploaded_file: FileStorage) -> list[Event]:
-    """Parse EAF PDF and extract scheduled events.
-    
-    Extracts course codes, course names, sections, and schedule information
-    from the PDF text. Handles multiple schedule entries per course.
-    
+def parse_eaf_pdf(content: bytes, filename: str = "") -> tuple[list[Event], EafMetadata]:
+    """Parse EAF PDF and extract scheduled events and metadata.
+
     Args:
-        uploaded_file: Flask FileStorage object containing PDF
-        
+        content: Raw PDF bytes
+        filename: Original filename (unused, kept for call-site symmetry)
+
     Returns:
-        List of Event objects extracted from PDF
-        
+        Tuple of (events, metadata) where events is a list of Event objects
+        and metadata contains student ID and term information
+
     Raises:
         ValueError: If PDF cannot be read or contains no valid events
     """
     try:
-        reader = PdfReader(uploaded_file.stream)
+        reader = PdfReader(BytesIO(content))
     except Exception as exc:
         raise ValueError(f"Could not read PDF file. It may be corrupted or not a valid PDF. Error: {str(exc)}") from exc
-    
+
     if len(reader.pages) == 0:
         raise ValueError("The PDF file has no pages. Please upload a valid EAF PDF.")
-    
+
     try:
         text = "\n".join(page.extract_text() or "" for page in reader.pages)
     except Exception as exc:
         raise ValueError(f"Could not extract text from PDF. The file may be corrupted. Error: {str(exc)}") from exc
-    
+
     text = text.replace("\r", "")
+    flat_text = normalize_text(text.replace("\n", " "))
+
+    # Extract metadata from a single pass over the text
+    student_id_match = re.search(r"STUDENT ID\s*:\s*(\d+)", flat_text)
+    session_match = re.search(r"AY\s*(\d{4})-(\d{4}).*?Term\s*(\d+)", flat_text)
+    metadata = EafMetadata(
+        student_id=student_id_match.group(1) if student_id_match else None,
+        start_year=session_match.group(1) if session_match else None,
+        end_year=session_match.group(2) if session_match else None,
+        term_number=session_match.group(3) if session_match else None,
+    )
 
     # Parse rows from PDF text
     rows: list[str] = []
@@ -134,7 +131,6 @@ def parse_eaf_pdf(uploaded_file: FileStorage) -> list[Event]:
                     code=code,
                     title=title,
                     course_name=course_name,
-                    location_label=location,
                     day=day,
                     start_time=start_time,
                     end_time=end_time,
@@ -142,40 +138,20 @@ def parse_eaf_pdf(uploaded_file: FileStorage) -> list[Event]:
                 )
             )
 
-    return events
+    return events, metadata
 
 
-def build_schedule_filename(uploaded_file: FileStorage) -> str:
-    """Generate ICS filename from PDF metadata (student ID, term, AY).
-    
-    Extracts student ID and academic year/term info from PDF to create
-    a descriptive filename. Falls back to generic name if metadata not found.
-    
+def build_schedule_filename(metadata: EafMetadata) -> str:
+    """Generate ICS filename from EAF metadata (student ID, term, AY).
+
     Args:
-        uploaded_file: Flask FileStorage object containing PDF
-        
+        metadata: Parsed EAF metadata from parse_eaf_pdf
+
     Returns:
         Generated filename for ICS file (e.g., "123456_T2_AY24-25_Schedule.ics")
     """
-    try:
-        uploaded_file.seek(0)
-        reader = PdfReader(uploaded_file.stream)
-        text = normalize_text(" ".join(page.extract_text() or "" for page in reader.pages))
-    finally:
-        try:
-            uploaded_file.seek(0)
-        except Exception:  # noqa: BLE001
-            pass
-
-    student_id_match = re.search(r"STUDENT ID\s*:\s*(\d+)", text)
-    session_match = re.search(r"AY\s*(\d{4})-(\d{4}).*?Term\s*(\d+)", text)
-
-    if student_id_match and session_match:
-        student_id = student_id_match.group(1)
-        start_year = session_match.group(1)
-        end_year = session_match.group(2)
-        term_number = session_match.group(3)
-        academic_year = f"AY{start_year[-2:]}-{end_year[-2:]}"
-        return f"{student_id}_T{term_number}_{academic_year}_Schedule.ics"
+    if metadata.student_id and metadata.start_year and metadata.end_year and metadata.term_number:
+        academic_year = f"AY{metadata.start_year[-2:]}-{metadata.end_year[-2:]}"
+        return f"{metadata.student_id}_T{metadata.term_number}_{academic_year}_Schedule.ics"
 
     return "eaf-calendar.ics"

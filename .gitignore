@@ -29,6 +29,15 @@ share/python-wheels/
 *.egg
 MANIFEST
 
+# Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/build/
+frontend/.env
+frontend/.env.local
+frontend/*.log
+frontend/vite.*.log
+
 # IDE
 .vscode/
 .idea/
@@ -57,6 +66,13 @@ Thumbs.db
 
 # Application-specific
 *.ics
-test-*.pdf
+*.pdf
 generated_calendars/
 run.py
+
+# EAF sample files (contain student personal data)
+EAF Samples/
+
+# Generated / tooling output
+graphify-out/
+public.bak/

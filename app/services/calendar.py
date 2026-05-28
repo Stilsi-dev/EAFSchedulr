@@ -5,7 +5,7 @@ files in RFC 5545 format, and building preview data for UI display.
 """
 
 from collections.abc import Iterable
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 import uuid
 
 from app.config import (
@@ -61,75 +61,101 @@ def validate_recollection_dates(
             )
 
 
-def fold_ical_line(line: str, max_len: int = 75) -> list[str]:
-    """Fold long iCalendar lines to RFC 5545 compliance (max 75 chars per line).
-    
+def fold_ical_line(line: str, max_bytes: int = 75) -> list[str]:
+    """Fold long iCalendar lines to RFC 5545 compliance (max 75 octets per line).
+
     iCalendar format requires lines longer than 75 bytes to be split
-    with continuation lines starting with a space.
-    
+    with continuation lines starting with a space. Counts UTF-8 bytes,
+    not characters, per RFC 5545.
+
     Args:
         line: Line to fold
-        max_len: Maximum line length (default: 75 per RFC 5545)
-        
+        max_bytes: Maximum line length in bytes (default: 75 per RFC 5545)
+
     Returns:
         List of folded lines
     """
-    if len(line) <= max_len:
+    encoded = line.encode("utf-8")
+    if len(encoded) <= max_bytes:
         return [line]
 
-    folded_lines = [line[:max_len]]
-    index = max_len
-    while index < len(line):
-        folded_lines.append(" " + line[index:index + (max_len - 1)])
-        index += max_len - 1
-    return folded_lines
+    folded: list[str] = []
+    chunk_max = max_bytes
+    pos = 0
+    while pos < len(encoded):
+        chunk = encoded[pos:pos + chunk_max]
+        # Trim to valid UTF-8 boundary
+        while chunk:
+            try:
+                chunk.decode("utf-8")
+                break
+            except UnicodeDecodeError:
+                chunk = chunk[:-1]
+        folded.append((" " if pos > 0 else "") + chunk.decode("utf-8"))
+        pos += len(chunk)
+        chunk_max = max_bytes - 1  # continuation lines start with a space (1 byte)
+    return folded
 
 
-def build_calendar_preview(
-    events: Iterable[Event],
-    recollection_dates: dict[str, date] | None = None
-) -> list[dict[str, object]]:
-    """Build calendar preview grouped by day with times sorted.
-    
-    Organizes events by day of week and sorts by start time. Used for
-    displaying events in the calendar preview on the UI.
-    
-    Args:
-        events: Events to preview
-        recollection_dates: Optional mapping of recollection dates
-        
-    Returns:
-        List of day dictionaries with events, sorted by time
-    """
-    recollection_dates = recollection_dates or {}
-    grouped: dict[str, list[dict[str, object]]] = {day: [] for day in DAY_TO_WEEKDAY}
 
-    for event in events:
-        grouped[event.day].append(
-            {
-                "code": event.code,
-                "title": event.title,
-                "course_name": event.course_name,
-                "start_time": event.start_time,
-                "end_time": event.end_time,
-                "location": event.location,
-                "is_recollection": event.code in RECOLLECTION_TITLES,
-                "selected_date": recollection_dates.get(event.code).isoformat() if recollection_dates.get(event.code) else None,
-            }
-        )
+def assign_overlap_lanes(
+    events: list[dict],
+    grid_start_minutes: int,
+    span_minutes: int,
+) -> None:
+    """Assign lane_index, lane_count, top_pct, height_pct, left_pct, width_pct
+    to each event dict in-place."""
+    if not events:
+        return
 
-    # Sort events by start time within each day
-    for day_events in grouped.values():
-        day_events.sort(key=lambda item: parse_clock(str(item["start_time"])))
+    ordered = sorted(events, key=lambda item: (int(item["start_minutes"]), int(item["end_minutes"])))
+    component: list[dict] = []
+    component_end = -1
 
-    return [
-        {
-            "key": day,
-            "label": DAY_LABELS[day],
-            "events": grouped[day],
-        }
-        for day in DAY_TO_WEEKDAY
-    ]
+    def flush_component(items: list[dict]) -> None:
+        if not items:
+            return
+
+        lanes_end: list[int] = []
+        for item in items:
+            start_value = int(item["start_minutes"])
+            end_value = int(item["end_minutes"])
+            lane_index = None
+            for index, lane_end in enumerate(lanes_end):
+                if lane_end <= start_value:
+                    lane_index = index
+                    lanes_end[index] = end_value
+                    break
+            if lane_index is None:
+                lane_index = len(lanes_end)
+                lanes_end.append(end_value)
+            item["lane_index"] = lane_index
+
+        lane_count = max(1, len(lanes_end))
+        for item in items:
+            item["lane_count"] = lane_count
+            item["top_pct"] = ((int(item["start_minutes"]) - grid_start_minutes) / span_minutes) * 100
+            item["height_pct"] = max(((int(item["end_minutes"]) - int(item["start_minutes"])) / span_minutes) * 100, 2.5)
+            item["left_pct"] = (int(item["lane_index"]) / lane_count) * 100
+            item["width_pct"] = 100 / lane_count
+
+    for item in ordered:
+        start_value = int(item["start_minutes"])
+        end_value = int(item["end_minutes"])
+        if not component:
+            component = [item]
+            component_end = end_value
+            continue
+
+        if start_value < component_end:
+            component.append(item)
+            component_end = max(component_end, end_value)
+        else:
+            flush_component(component)
+            component = [item]
+            component_end = end_value
+
+    flush_component(component)
 
 
 def build_timetable_preview(
@@ -189,63 +215,8 @@ def build_timetable_preview(
     span_minutes = end_minutes - start_minutes
     tick_minutes = list(range(start_minutes, end_minutes + 1, 60))
 
-    def assign_overlap_layout(day_events: list[dict[str, object]]) -> None:
-        """Assign lane indices and calculate CSS percentages for overlapping events."""
-        if not day_events:
-            return
-
-        ordered = sorted(day_events, key=lambda item: (int(item["start_minutes"]), int(item["end_minutes"])))
-        component: list[dict[str, object]] = []
-        component_end = -1
-
-        def flush_component(items: list[dict[str, object]]) -> None:
-            """Process a group of overlapping events and assign lanes."""
-            if not items:
-                return
-
-            lanes_end: list[int] = []
-            for item in items:
-                start_value = int(item["start_minutes"])
-                end_value = int(item["end_minutes"])
-                lane_index = None
-                for index, lane_end in enumerate(lanes_end):
-                    if lane_end <= start_value:
-                        lane_index = index
-                        lanes_end[index] = end_value
-                        break
-                if lane_index is None:
-                    lane_index = len(lanes_end)
-                    lanes_end.append(end_value)
-                item["lane_index"] = lane_index
-            
-            lane_count = max(1, len(lanes_end))
-            for item in items:
-                item["lane_count"] = lane_count
-                item["top_pct"] = ((int(item["start_minutes"]) - start_minutes) / span_minutes) * 100
-                item["height_pct"] = max(((int(item["end_minutes"]) - int(item["start_minutes"])) / span_minutes) * 100, 2.5)
-                item["left_pct"] = (int(item["lane_index"]) / lane_count) * 100
-                item["width_pct"] = 100 / lane_count
-
-        for item in ordered:
-            start_value = int(item["start_minutes"])
-            end_value = int(item["end_minutes"])
-            if not component:
-                component = [item]
-                component_end = end_value
-                continue
-
-            if start_value < component_end:
-                component.append(item)
-                component_end = max(component_end, end_value)
-            else:
-                flush_component(component)
-                component = [item]
-                component_end = end_value
-
-        flush_component(component)
-
     for day_events in grouped.values():
-        assign_overlap_layout(day_events)
+        assign_overlap_lanes(day_events, start_minutes, span_minutes)
 
     return {
         "start_minutes": start_minutes,
@@ -300,7 +271,7 @@ def build_ics(
     Raises:
         ValueError: If recollection dates are required but missing
     """
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     recollection_dates = recollection_dates or {}
     lines = [
         "BEGIN:VCALENDAR",
