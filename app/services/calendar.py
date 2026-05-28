@@ -5,7 +5,7 @@ files in RFC 5545 format, and building preview data for UI display.
 """
 
 from collections.abc import Iterable
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 import uuid
 
 from app.config import (
@@ -104,52 +104,6 @@ def fold_ical_line(line: str, max_len: int = 75) -> list[str]:
         index += max_len - 1
     return folded_lines
 
-
-def build_calendar_preview(
-    events: Iterable[Event],
-    recollection_dates: dict[str, date] | None = None
-) -> list[dict[str, object]]:
-    """Build calendar preview grouped by day with times sorted.
-    
-    Organizes events by day of week and sorts by start time. Used for
-    displaying events in the calendar preview on the UI.
-    
-    Args:
-        events: Events to preview
-        recollection_dates: Optional mapping of recollection dates
-        
-    Returns:
-        List of day dictionaries with events, sorted by time
-    """
-    recollection_dates = recollection_dates or {}
-    grouped: dict[str, list[dict[str, object]]] = {day: [] for day in DAY_TO_WEEKDAY}
-
-    for event in events:
-        grouped[event.day].append(
-            {
-                "code": event.code,
-                "title": event.title,
-                "course_name": event.course_name,
-                "start_time": event.start_time,
-                "end_time": event.end_time,
-                "location": event.location,
-                "is_recollection": event.code in RECOLLECTION_TITLES,
-                "selected_date": recollection_dates.get(event.code).isoformat() if recollection_dates.get(event.code) else None,
-            }
-        )
-
-    # Sort events by start time within each day
-    for day_events in grouped.values():
-        day_events.sort(key=lambda item: parse_clock(str(item["start_time"])))
-
-    return [
-        {
-            "key": day,
-            "label": DAY_LABELS[day],
-            "events": grouped[day],
-        }
-        for day in DAY_TO_WEEKDAY
-    ]
 
 
 def build_timetable_preview(
@@ -320,7 +274,7 @@ def build_ics(
     Raises:
         ValueError: If recollection dates are required but missing
     """
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     recollection_dates = recollection_dates or {}
     lines = [
         "BEGIN:VCALENDAR",

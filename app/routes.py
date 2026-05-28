@@ -4,52 +4,22 @@ Handles user requests for PDF upload, calendar generation, and file download.
 Manages CSRF tokens and coordinates between services.
 """
 
-import uuid
 from datetime import date, datetime
 from io import BytesIO
 from typing import Any
 
-from flask import Blueprint, flash, jsonify, redirect, request, send_file, session, url_for
+from flask import Blueprint, flash, jsonify, redirect, request, send_file, url_for
 from werkzeug.datastructures import FileStorage
 
 from app.config import DEFAULT_WEEKS, RECOLLECTION_TITLES
+from app.extensions import limiter
+from app.token_store import create as create_token, consume as consume_token
 from app.services.calendar import build_ics, build_timetable_preview, validate_recollection_dates
-from app.services.parser import build_schedule_filename, parse_eaf_pdf, validate_pdf_file
+from app.services.parser import parse_eaf_pdf, validate_pdf_file
 from app.utils import format_display_datetime, APP_TZ
 
 # Blueprint for all routes
 bp = Blueprint("main", __name__)
-
-# Storage for generated ICS files (simple in-memory cache)
-# Maps temporary token -> ICS content
-GENERATED_ICS: dict[str, str] = {}
-# Maps temporary token -> downloaded filename
-GENERATED_FILENAMES: dict[str, str] = {}
-
-
-def generate_csrf_token() -> str:
-    """Generate and store a CSRF token in the user's session.
-    
-    Creates a new token if one doesn't exist, or returns the existing token.
-    
-    Returns:
-        CSRF token string (UUID hex)
-    """
-    if "csrf_token" not in session:
-        session["csrf_token"] = uuid.uuid4().hex
-    return session["csrf_token"]
-
-
-def validate_csrf_token(token: str) -> bool:
-    """Validate a CSRF token against the session token.
-    
-    Args:
-        token: Token to validate (from form submission)
-        
-    Returns:
-        True if token matches session token, False otherwise
-    """
-    return token == session.get("csrf_token")
 
 
 def format_recollection_summary(recollection_dates: dict[str, date]) -> list[str]:
@@ -75,6 +45,7 @@ def index():
 
 
 @bp.post("/inspect")
+@limiter.limit("20 per minute")
 def inspect() -> Any:
     """Inspect uploaded PDF and return course and recollection info.
     
@@ -100,8 +71,8 @@ def inspect() -> Any:
         ambiguous_rows = parsed.ambiguous_rows
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
-    except Exception as exc:
-        return jsonify({"error": f"An unexpected error occurred while reading the PDF: {str(exc)}"}), 400
+    except Exception:
+        return jsonify({"error": "An unexpected error occurred while reading the PDF. Please ensure you uploaded a valid EAF PDF."}), 400
 
     if not events:
         return jsonify({"error": "No scheduled events were found in the uploaded EAF. The file may not be a valid Enrollment Assessment Form."}), 400
@@ -128,7 +99,7 @@ def inspect() -> Any:
             "recollection_days": recollection_map,
             "events": serialized_events,
             "ambiguous_rows": [ar.__dict__ for ar in ambiguous_rows],
-            "generated_filename": build_schedule_filename(uploaded_file),
+            "generated_filename": parsed.suggested_filename,
             "event_count": len(events),
             "course_count": len({event.code for event in events}),
         }
@@ -136,6 +107,7 @@ def inspect() -> Any:
 
 
 @bp.post("/generate")
+@limiter.limit("20 per minute")
 def generate() -> Any:
     """Generate calendar file from uploaded EAF PDF.
     
@@ -150,13 +122,6 @@ def generate() -> Any:
     def json_error(message: str, status_code: int = 400) -> tuple[dict[str, str], int]:
         return jsonify({"error": message}), status_code
 
-    # Validate CSRF token for the legacy server-rendered form. The React UI
-    # posts with an Accept: application/json header and receives JSON instead.
-    csrf_token = request.form.get("csrf_token", "")
-    if not wants_json and not validate_csrf_token(csrf_token):
-        flash("Invalid request. Please try again.")
-        return redirect(url_for("main.index"))
-    
     uploaded_file: FileStorage | None = request.files.get("eaf_pdf")
     
     # Validate file
@@ -180,10 +145,10 @@ def generate() -> Any:
             return json_error(str(exc))
         flash(str(exc))
         return redirect(url_for("main.index"))
-    except Exception as exc:
+    except Exception:
         if wants_json:
-            return json_error(f"An unexpected error occurred: {str(exc)}")
-        flash(f"An unexpected error occurred: {str(exc)}")
+            return json_error("An unexpected error occurred. Please ensure you uploaded a valid EAF PDF.")
+        flash("An unexpected error occurred. Please ensure you uploaded a valid EAF PDF.")
         return redirect(url_for("main.index"))
 
     if not events:
@@ -245,9 +210,7 @@ def generate() -> Any:
         return redirect(url_for("main.index"))
   
     # Store generated calendar for download
-    token = uuid.uuid4().hex
-    GENERATED_ICS[token] = ics_content
-    GENERATED_FILENAMES[token] = build_schedule_filename(uploaded_file)
+    token = create_token(ics_content, parsed.suggested_filename)
     generated_at = format_display_datetime(datetime.now(tz=APP_TZ))
 
     if uploaded_file:
@@ -257,7 +220,7 @@ def generate() -> Any:
             pass
 
     download_url = url_for("main.download_ics", token=token)
-    generated_filename = GENERATED_FILENAMES[token]
+    generated_filename = parsed.suggested_filename
 
     # Always return JSON for the React app to handle the UI
     return jsonify(
@@ -292,28 +255,18 @@ def download_ics(token: str):
     Returns:
         File download response or redirect if token invalid/expired
     """
-    ics_content = GENERATED_ICS.get(token)
-    if ics_content is None:
+    result = consume_token(token)
+    if result is None:
         flash("Download link expired. Please generate a new calendar.")
         return redirect(url_for("main.index"))
 
-    download_name = GENERATED_FILENAMES.get(token, "eaf-calendar.ics")
+    ics_content, download_name = result
     buffer = BytesIO(ics_content.encode("utf-8"))
     buffer.seek(0)
-    
-    def cleanup() -> None:
-        """Remove token and ICS content from storage."""
-        GENERATED_ICS.pop(token, None)
-        GENERATED_FILENAMES.pop(token, None)
-    
-    try:
-        response = send_file(
-            buffer,
-            mimetype="text/calendar",
-            as_attachment=True,
-            download_name=download_name,
-        )
-    finally:
-        cleanup()
-    
-    return response
+
+    return send_file(
+        buffer,
+        mimetype="text/calendar",
+        as_attachment=True,
+        download_name=download_name,
+    )
