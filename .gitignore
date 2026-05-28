@@ -68,3 +68,12 @@ frontend/vite.err.log
 *.err.log
 public.bak/
 TODO
+TEXTS
+
+# Claude Code
+.claude/
+CLAUDE.md
+
+# Graphify output
+graphify-out/
+/docs

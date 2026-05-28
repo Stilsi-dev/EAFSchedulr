@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, type ChangeEvent, type DragEvent } from "react";
+import { useState, useRef, useEffect, useMemo, type ChangeEvent, type DragEvent } from "react";
 import { Upload, Calendar, CheckCircle2, AlertCircle, Sparkles, FileText, ArrowRight, Download, BookOpen, CalendarDays, Shield, Mail, Github, Heart, MapPin, Moon, Sun } from "lucide-react";
 
 const WEEKDAY_LABELS = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"];
@@ -73,6 +73,60 @@ type CourseSummary = {
     locations: string[];
   }>;
 };
+
+function buildCourseSummaries(events: InspectedEvent[]): CourseSummary[] {
+  return Array.from(
+    events.reduce((summaries, event) => {
+      const existingSummary = summaries.get(event.code);
+      if (existingSummary) {
+        existingSummary.hasRecollection = existingSummary.hasRecollection || event.is_recollection;
+        const existingMeetingGroup = existingSummary.meetingGroups.find(
+          (meetingGroup) =>
+            meetingGroup.startTime === event.start_time
+            && meetingGroup.endTime === event.end_time,
+        );
+
+        if (existingMeetingGroup) {
+          existingMeetingGroup.days.push(event.day);
+          if (event.location && !existingMeetingGroup.locations.includes(event.location)) {
+            existingMeetingGroup.locations.push(event.location);
+          }
+        } else {
+          existingSummary.meetingGroups.push({
+            days: [event.day],
+            startTime: event.start_time,
+            endTime: event.end_time,
+            locations: event.location ? [event.location] : [],
+          });
+        }
+
+        return summaries;
+      }
+
+      summaries.set(event.code, {
+        code: event.code,
+        sectionCode: event.title.replace(`${event.code} `, "").trim(),
+        courseName: event.course_name,
+        hasRecollection: event.is_recollection,
+        meetingGroups: [
+          {
+            days: [event.day],
+            startTime: event.start_time,
+            endTime: event.end_time,
+            locations: event.location ? [event.location] : [],
+          },
+        ],
+      });
+      return summaries;
+    }, new Map<string, CourseSummary>()).values(),
+  ).map((summary) => ({
+    ...summary,
+    meetingGroups: summary.meetingGroups.map((meetingGroup) => ({
+      ...meetingGroup,
+      days: Array.from(new Set(meetingGroup.days)),
+    })),
+  }));
+}
 
 export default function App() {
   const [file, setFile] = useState<File | null>(null);
@@ -334,57 +388,10 @@ export default function App() {
     window.location.href = downloadUrl;
   };
 
-  const courseSummaries = Array.from(
-    inspectedEvents.reduce((summaries, event) => {
-      const existingSummary = summaries.get(event.code);
-      if (existingSummary) {
-        existingSummary.hasRecollection = existingSummary.hasRecollection || event.is_recollection;
-        const existingMeetingGroup = existingSummary.meetingGroups.find(
-          (meetingGroup) =>
-            meetingGroup.startTime === event.start_time
-            && meetingGroup.endTime === event.end_time,
-        );
-
-        if (existingMeetingGroup) {
-          existingMeetingGroup.days.push(event.day);
-          if (event.location && !existingMeetingGroup.locations.includes(event.location)) {
-            existingMeetingGroup.locations.push(event.location);
-          }
-        } else {
-          existingSummary.meetingGroups.push({
-            days: [event.day],
-            startTime: event.start_time,
-            endTime: event.end_time,
-            locations: event.location ? [event.location] : [],
-          });
-        }
-
-        return summaries;
-      }
-
-      summaries.set(event.code, {
-        code: event.code,
-        sectionCode: event.title.replace(`${event.code} `, "").trim(),
-        courseName: event.course_name,
-        hasRecollection: event.is_recollection,
-        meetingGroups: [
-          {
-            days: [event.day],
-            startTime: event.start_time,
-            endTime: event.end_time,
-            locations: event.location ? [event.location] : [],
-          },
-        ],
-      });
-      return summaries;
-    }, new Map<string, CourseSummary>()).values(),
-  ).map((summary) => ({
-    ...summary,
-    meetingGroups: summary.meetingGroups.map((meetingGroup) => ({
-      ...meetingGroup,
-      days: Array.from(new Set(meetingGroup.days)),
-    })),
-  }));
+  const courseSummaries = useMemo(
+    () => buildCourseSummaries(inspectedEvents),
+    [inspectedEvents],
+  );
   const uniqueCourseCount = new Set(inspectedEvents.map((event) => event.code)).size;
   const coursePreview = showAllCourses ? courseSummaries : courseSummaries.slice(0, 4);
   const hasMoreCourses = courseSummaries.length > 4;
