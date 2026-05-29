@@ -44,6 +44,20 @@ def standardize_location(value: str) -> str:
     return cleaned
 
 
+def titlecase_course_name(value: str) -> str:
+    """Convert course name to title case (capitalized case).
+    
+    Converts uppercase text like "CAPITAL MARKETS" to "Capital Markets".
+    
+    Args:
+        value: Raw course name text
+        
+    Returns:
+        Title-cased course name
+    """
+    return value.title() if value else value
+
+
 def parse_clock(value: str) -> time:
     """Parse 12-hour time format string to time object.
     

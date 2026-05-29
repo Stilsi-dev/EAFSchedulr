@@ -5,7 +5,7 @@ files in RFC 5545 format, and building preview data for UI display.
 """
 
 from collections.abc import Iterable
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 import uuid
 
 from app.config import (
@@ -31,6 +31,19 @@ from app.utils import (
 )
 
 
+def get_recollection_day_options(events: Iterable[Event]) -> dict[str, set[str]]:
+    """Collect the weekday codes seen for each recollection course code."""
+    day_options: dict[str, set[str]] = {}
+
+    for event in events:
+        if event.code not in RECOLLECTION_TITLES:
+            continue
+
+        day_options.setdefault(event.code, set()).add(event.day.strip().upper())
+
+    return day_options
+
+
 def validate_recollection_dates(
     events: Iterable[Event],
     recollection_dates: dict[str, date]
@@ -47,17 +60,24 @@ def validate_recollection_dates(
     Raises:
         ValueError: If date doesn't match weekday or date is missing
     """
-    for event in events:
-        if event.code not in RECOLLECTION_TITLES:
-            continue
-
-        recollection_date = recollection_dates.get(event.code)
+    for code, expected_days in get_recollection_day_options(events).items():
+        recollection_date = recollection_dates.get(code)
         if recollection_date is None:
-            raise ValueError(f"A specific recollection date is required for {RECOLLECTION_TITLES[event.code]}.")
+            raise ValueError(f"A specific recollection date is required for {RECOLLECTION_TITLES[code]}.")
 
-        if recollection_date.weekday() != DAY_TO_WEEKDAY[event.day]:
+        allowed_weekdays = {
+            DAY_TO_WEEKDAY[day]
+            for day in expected_days
+            if day in DAY_TO_WEEKDAY
+        }
+        if allowed_weekdays and recollection_date.weekday() not in allowed_weekdays:
+            allowed_labels = ", ".join(
+                DAY_LABELS[day]
+                for day in sorted(expected_days, key=lambda day: DAY_TO_WEEKDAY.get(day, 99))
+                if day in DAY_LABELS
+            )
             raise ValueError(
-                f"{RECOLLECTION_TITLES[event.code]} is scheduled on {DAY_LABELS[event.day]}. Please choose a {DAY_LABELS[event.day]} date."
+                f"{RECOLLECTION_TITLES[code]} is scheduled on {allowed_labels}. Please choose a {allowed_labels} date."
             )
 
 
@@ -84,52 +104,6 @@ def fold_ical_line(line: str, max_len: int = 75) -> list[str]:
         index += max_len - 1
     return folded_lines
 
-
-def build_calendar_preview(
-    events: Iterable[Event],
-    recollection_dates: dict[str, date] | None = None
-) -> list[dict[str, object]]:
-    """Build calendar preview grouped by day with times sorted.
-    
-    Organizes events by day of week and sorts by start time. Used for
-    displaying events in the calendar preview on the UI.
-    
-    Args:
-        events: Events to preview
-        recollection_dates: Optional mapping of recollection dates
-        
-    Returns:
-        List of day dictionaries with events, sorted by time
-    """
-    recollection_dates = recollection_dates or {}
-    grouped: dict[str, list[dict[str, object]]] = {day: [] for day in DAY_TO_WEEKDAY}
-
-    for event in events:
-        grouped[event.day].append(
-            {
-                "code": event.code,
-                "title": event.title,
-                "course_name": event.course_name,
-                "start_time": event.start_time,
-                "end_time": event.end_time,
-                "location": event.location,
-                "is_recollection": event.code in RECOLLECTION_TITLES,
-                "selected_date": recollection_dates.get(event.code).isoformat() if recollection_dates.get(event.code) else None,
-            }
-        )
-
-    # Sort events by start time within each day
-    for day_events in grouped.values():
-        day_events.sort(key=lambda item: parse_clock(str(item["start_time"])))
-
-    return [
-        {
-            "key": day,
-            "label": DAY_LABELS[day],
-            "events": grouped[day],
-        }
-        for day in DAY_TO_WEEKDAY
-    ]
 
 
 def build_timetable_preview(
@@ -300,7 +274,7 @@ def build_ics(
     Raises:
         ValueError: If recollection dates are required but missing
     """
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     recollection_dates = recollection_dates or {}
     lines = [
         "BEGIN:VCALENDAR",
