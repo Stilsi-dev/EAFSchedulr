@@ -31,6 +31,7 @@ This project automates the entire process directly from the official EAF PDF, ge
 - 🎯 **Smart Weekday Validation** — Ensures recollection dates match the scheduled weekday
 - 💾 **Automatic Metadata** — Extracts student ID, term, and academic year from your EAF for proper file naming
 - ⚡ **Modern Frontend** — React, TypeScript, Vite, and Tailwind-powered UI built for the current workflow
+- 🌙 **Dark Mode** — Persistent dark/light mode toggle with system preference stored in localStorage
 
 ## Quick Start
 
@@ -52,7 +53,7 @@ This project automates the entire process directly from the official EAF PDF, ge
 5. Install the frontend dependencies if you want to run the React app in development:
    ```bash
    cd frontend
-   npm install
+   pnpm install
    ```
 
 ### Running the App
@@ -65,9 +66,9 @@ This project automates the entire process directly from the official EAF PDF, ge
 3. In a second terminal, start the Vite frontend if you want the source UI instead of the built files in `public/`:
    ```bash
    cd frontend
-   npm run dev
+   pnpm dev
    ```
-4. Open your browser and go to `http://127.0.0.1:5000` for the Flask-served app, or use the Vite dev server while it proxies API calls back to Flask.
+4. Open your browser at `http://127.0.0.1:5000` for the Flask-served app, or use the Vite dev server while it proxies API calls back to Flask.
 
 ## How to Use
 
@@ -104,9 +105,11 @@ Your calendar will include:
 ```text
 EAFSchedulr/
 ├── app/                           # Flask application package
-│   ├── __init__.py               # App factory and static-folder setup
+│   ├── __init__.py               # App factory, security headers, and rate limiter setup
 │   ├── config.py                 # Configuration and constants
+│   ├── extensions.py             # Shared Flask extension instances (Flask-Limiter)
 │   ├── models.py                 # Data models
+│   ├── token_store.py            # In-memory token store for download links (10-min TTL)
 │   ├── utils.py                  # Shared text and time utilities
 │   ├── routes.py                 # HTTP route handlers and JSON responses
 │   └── services/
@@ -118,7 +121,10 @@ EAFSchedulr/
 ├── public/                        # Built frontend assets served by Flask
 ├── scripts/
 │   └── sync_static.ps1            # Copies the Vite build into public/
+├── tests/
+│   └── test_flow.py              # Integration tests for /inspect and /generate
 ├── run.py                         # Application entry point
+├── Procfile                       # Gunicorn command for deployment
 ├── README.md                      # This file
 └── requirements.txt               # Python dependencies
 ```
@@ -127,7 +133,7 @@ EAFSchedulr/
 
 The application follows a **modular, layered architecture**:
 
-- **Routes Layer** (`routes.py`) — HTTP endpoints, CSRF protection, file upload handling, and JSON responses
+- **Routes Layer** (`routes.py`) — HTTP endpoints, rate limiting (20 requests/min per IP), file upload handling, and JSON responses
 - **Services Layer** — Business logic separated into focused modules:
   - `parser.py` — PDF validation and event extraction
   - `calendar.py` — ICS file generation and preview data
@@ -142,16 +148,19 @@ This separation keeps the backend easy to test, maintain, and extend.
 - Python 3.12 or higher
 - Flask 3.1.1
 - pypdf 6.0.0
-- Node.js and npm for frontend development
+- Flask-Limiter 3.9.0
+- gunicorn 26.0.0
+- Node.js and pnpm for frontend development
 
 ## Tech Stack
 
 | Layer | Technology |
 |---|---|
 | Frontend | React, TypeScript, TailwindCSS, Vite |
-| Backend | Flask |
+| Backend | Flask, Gunicorn |
 | PDF Parsing | pypdf |
 | Calendar Generation | iCalendar (.ics) |
+| Rate Limiting | Flask-Limiter |
 | Language | Python 3.12 |
 
 ## Technical Details
@@ -163,20 +172,21 @@ This separation keeps the backend easy to test, maintain, and extend.
 3. **Timezone Handling** — All times are stored in Philippine Time (UTC+8) for consistent exports
 4. **ICS Generation** — Creates a standards-compliant calendar file with recurring weekly events
 5. **Metadata Extraction** — Pulls your student ID, term number, and academic year from the PDF for file naming
-6. **Frontend/API Split** — The React app calls `/inspect`, `/generate`, and `/download` on the Flask backend
+6. **Frontend/API Split** — The React app calls `/inspect` and `/generate` on the Flask backend; `/generate` returns a one-time `/download/<token>` URL that expires after 10 minutes
 
 ### File Storage
 
-- Generated calendar files are temporarily stored in memory during your session
-- Downloads are served with proper HTTP headers for correct filename formatting
-- Files are not persisted to disk; they are generated fresh each time
+- Generated calendar files are held in an in-memory token store for up to 10 minutes
+- Each generation issues a one-time download token; consuming it removes the file from memory
+- Downloads expire after 10 minutes — if the link is no longer valid, generate a new calendar
+- Files are never written to disk
 
 ## Privacy
 
-- Your EAF PDF is processed locally by the app and is not uploaded to external services.
-- Generated calendar files are created in memory for the session and are not persisted to disk.
-- The application does not collect analytics or personal data.
-- Temporary data used for generation is discarded after the download completes.
+- Your EAF PDF is processed in memory by the server and is not forwarded to external services.
+- Generated calendar files are held in an in-memory token store and are never written to disk.
+- The application uses Google Analytics (via Google Tag Manager) to understand general site usage. No PDF content or personal data extracted from your EAF is sent to analytics.
+- Temporary data used for generation is discarded after the download token is consumed or expires.
 
 ### Timezone
 
@@ -211,6 +221,16 @@ Downloaded files are automatically named:
 
 Example: `12345678_T3_AY25-26_Schedule.ics`
 
+## Running Tests
+
+Integration tests cover the `/inspect` and `/generate` endpoints:
+
+```bash
+pytest tests/
+```
+
+Rate limiting is automatically disabled in the test fixture so tests run without hitting limits.
+
 ## Troubleshooting
 
 ### "No scheduled events found"
@@ -230,6 +250,10 @@ Example: `12345678_T3_AY25-26_Schedule.ics`
 - Verify your Google Calendar timezone is set to Philippine Time (Asia/Manila)
 - The app exports all times in PHT; Google Calendar should respect that setting
 
+### Download link expired
+- Download tokens are valid for 10 minutes after generation
+- If you see a "Download link expired" message, click "Create another schedule" and generate again
+
 ### Frontend is not loading changes
 - If you are editing the React source, make sure the Flask backend is running on `http://127.0.0.1:5000`
 - Run the Vite dev server from `frontend/` so the browser loads the current source instead of the built files in `public/`
@@ -246,7 +270,11 @@ https://github.com/Stilsi-dev/EAFSchedulr/issues
 
 ## Deployment
 
-The frontend is built with Vite and served as static assets through Flask in production. Use the provided `scripts/sync_static.ps1` to copy a Vite build into `public/`, or copy the `dist` output manually. Run the Flask app behind a production WSGI server (for example, Gunicorn or Waitress) for a production deployment.
+The frontend is built with Vite and served as static assets through Flask in production. Use the provided `scripts/sync_static.ps1` to copy a Vite build into `public/`, or copy the `dist` output manually.
+
+The included `Procfile` runs `gunicorn -w 1 run:app`. **Keep the worker count at 1.** The download token store is in-memory and not shared across workers — running multiple workers would cause download tokens generated by one worker to be invisible to others.
+
+Set `FLASK_SECRET` in the environment to a strong random value in production.
 
 ## License
 
