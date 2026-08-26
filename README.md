@@ -82,6 +82,9 @@ This project automates the entire process directly from the official EAF PDF, ge
 - If your EAF includes LASARE (Lasallian Recollection) 1, 2, or 3, select the exact date for each recollection
   - **Important:** The recollection date must fall on the same weekday as scheduled in your EAF
 - The app validates your choices and shows helpful guidance when something does not line up
+- If any row of your EAF could not be read, the app lists those rows, asks you to confirm you
+  will add them yourself, and lets you copy a report to send with a bug report. Nothing is
+  dropped silently
 
 ### Step 3: Export
 - Click **Generate Calendar** to create your `.ics` file
@@ -98,7 +101,7 @@ Your calendar will include:
 - **Room/Location** — Where each class meets, or `Online` when applicable
 - **Course Codes & Sections** — Displayed in the event title for easy identification
 - **Recurring Pattern** — Classes repeat weekly throughout the term
-- **Recollections** — Any Lasallian recollections appear as single all-day events on their designated dates
+- **Recollections** — Any Lasallian recollections appear as one-time events at their scheduled time on the date you choose (not repeating, and not all-day)
 
 ## Project Structure
 
@@ -122,7 +125,10 @@ EAFSchedulr/
 ├── scripts/
 │   └── sync_static.ps1            # Copies the Vite build into public/
 ├── tests/
-│   └── test_flow.py              # Integration tests for /inspect and /generate
+│   ├── test_flow.py              # Integration tests for /inspect and /generate
+│   ├── test_parser.py            # Parser tests: golden files + named rules
+│   ├── make_fixtures.py          # Regenerates fixtures from local EAF PDFs
+│   └── fixtures/                 # Anonymised EAF text + expected parse output
 ├── run.py                         # Application entry point
 ├── Procfile                       # Gunicorn command for deployment
 ├── README.md                      # This file
@@ -223,13 +229,33 @@ Example: `12345678_T3_AY25-26_Schedule.ics`
 
 ## Running Tests
 
-Integration tests cover the `/inspect` and `/generate` endpoints:
+The fixtures are anonymised: student names and ID numbers are replaced with synthetic
+values before anything is written to `tests/fixtures/`, so the suite ships with the repo
+while the source EAF PDFs (`EAF Samples/`) stay local and gitignored.
+
+The suite has two layers:
+
+- `test_flow.py` — integration tests for `/inspect`, `/generate`, and the download token
+- `test_parser.py` — parser tests against anonymised text fixtures, combining golden-file
+  comparison (catches any unanticipated change to parsed output) with named tests for the
+  rules that matter: `TBA` fallback, recollection weekday validation, filename derivation
 
 ```bash
 pytest tests/
 ```
 
 Rate limiting is automatically disabled in the test fixture so tests run without hitting limits.
+
+If the Archers Hub EAF format changes, regenerate the fixtures from your own samples and
+**read the diff** before accepting it — that diff is how format drift becomes visible:
+
+```bash
+python tests/make_fixtures.py
+```
+
+`make_fixtures.py` reads PDFs from `EAF Samples/` by the neutral filenames listed in its
+`SAMPLES` map. Keep those names free of student IDs and real names: the script is committed,
+the PDFs are not.
 
 ## Troubleshooting
 
