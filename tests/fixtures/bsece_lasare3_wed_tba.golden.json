@@ -1,0 +1,159 @@
+{
+  "suggested_filename": "11900002_T3_AY25-26_Schedule.ics",
+  "events": [
+    {
+      "code": "ECNOMCC",
+      "title": "ECNOMCC E40",
+      "course_name": "ENGINEERING ECONOMICS FOR ECE",
+      "day": "MON",
+      "start_time": "02:30 PM",
+      "end_time": "04:00 PM",
+      "location": "G201"
+    },
+    {
+      "code": "ECNOMCC",
+      "title": "ECNOMCC E40",
+      "course_name": "ENGINEERING ECONOMICS FOR ECE",
+      "day": "THU",
+      "start_time": "02:30 PM",
+      "end_time": "04:00 PM",
+      "location": "G201"
+    },
+    {
+      "code": "GERIZAL",
+      "title": "GERIZAL Y06",
+      "course_name": "ANG BUHAY AT MGA AKDA NI RIZAL",
+      "day": "MON",
+      "start_time": "04:15 PM",
+      "end_time": "05:45 PM",
+      "location": "G209"
+    },
+    {
+      "code": "GERIZAL",
+      "title": "GERIZAL Y06",
+      "course_name": "ANG BUHAY AT MGA AKDA NI RIZAL",
+      "day": "THU",
+      "start_time": "04:15 PM",
+      "end_time": "05:45 PM",
+      "location": "Online"
+    },
+    {
+      "code": "MACTRAN",
+      "title": "MACTRAN E25",
+      "course_name": "ENERGY CONVERSION",
+      "day": "MON",
+      "start_time": "11:10 AM",
+      "end_time": "12:00 PM",
+      "location": "A1101"
+    },
+    {
+      "code": "MACTRAN",
+      "title": "MACTRAN E25",
+      "course_name": "ENERGY CONVERSION",
+      "day": "THU",
+      "start_time": "11:10 AM",
+      "end_time": "12:00 PM",
+      "location": "TBA"
+    },
+    {
+      "code": "TRANSIL",
+      "title": "TRANSIL E40",
+      "course_name": "TRANSMISSION OF SIGNALS",
+      "day": "MON",
+      "start_time": "09:15 AM",
+      "end_time": "10:45 AM",
+      "location": "G207"
+    },
+    {
+      "code": "TRANSIL",
+      "title": "TRANSIL E40",
+      "course_name": "TRANSMISSION OF SIGNALS",
+      "day": "THU",
+      "start_time": "09:15 AM",
+      "end_time": "10:45 AM",
+      "location": "TBA"
+    },
+    {
+      "code": "GEMATMW",
+      "title": "GEMATMW Z30",
+      "course_name": "MATHEMATICS IN THE MODERN WORLD",
+      "day": "TUE",
+      "start_time": "12:45 PM",
+      "end_time": "02:15 PM",
+      "location": "Online"
+    },
+    {
+      "code": "GEMATMW",
+      "title": "GEMATMW Z30",
+      "course_name": "MATHEMATICS IN THE MODERN WORLD",
+      "day": "FRI",
+      "start_time": "12:45 PM",
+      "end_time": "02:15 PM",
+      "location": "L216"
+    },
+    {
+      "code": "LBYEC3G",
+      "title": "LBYEC3G E26",
+      "course_name": "DIGITAL SYSTEMS DESIGN LABORATORY",
+      "day": "TUE",
+      "start_time": "02:30 PM",
+      "end_time": "05:30 PM",
+      "location": "V402"
+    },
+    {
+      "code": "LBYEC3I",
+      "title": "LBYEC3I E20",
+      "course_name": "TRANSMISSION OF SIGNALS LABORATORY",
+      "day": "TUE",
+      "start_time": "09:30 AM",
+      "end_time": "12:30 PM",
+      "location": "TBA"
+    },
+    {
+      "code": "LASARE3",
+      "title": "LASARE3 E02",
+      "course_name": "LASALLIAN RECOLLECTION 3",
+      "day": "WED",
+      "start_time": "03:15 PM",
+      "end_time": "04:15 PM",
+      "location": "Y409"
+    },
+    {
+      "code": "LBYEC4D",
+      "title": "LBYEC4D E26",
+      "course_name": "ENERGY CONVERSION LABORATORY",
+      "day": "FRI",
+      "start_time": "09:30 AM",
+      "end_time": "12:30 PM",
+      "location": "M402A"
+    },
+    {
+      "code": "LBYEC3H",
+      "title": "LBYEC3H E25",
+      "course_name": "ANALOG SYSTEMS DESIGN LABORATORY",
+      "day": "FRI",
+      "start_time": "02:30 PM",
+      "end_time": "05:30 PM",
+      "location": "V303A"
+    },
+    {
+      "code": "LCLSTRI",
+      "title": "LCLSTRI Z32",
+      "course_name": "LASALLIAN STUDIES 3",
+      "day": "SAT",
+      "start_time": "10:00 AM",
+      "end_time": "12:00 PM",
+      "location": "Online"
+    },
+    {
+      "code": "THSCC1A",
+      "title": "THSCC1A E40",
+      "course_name": "ECE PROJECT 1",
+      "day": "SAT",
+      "start_time": "06:00 PM",
+      "end_time": "09:15 PM",
+      "location": "TBA"
+    }
+  ],
+  "ambiguous_rows": []
+}

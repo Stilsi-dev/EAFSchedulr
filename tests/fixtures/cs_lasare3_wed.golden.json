@@ -1,0 +1,87 @@
+{
+  "suggested_filename": "11900003_T3_AY25-26_Schedule.ics",
+  "events": [
+    {
+      "code": "CSSWENG",
+      "title": "CSSWENG S01",
+      "course_name": "SOFTWARE ENGINEERING",
+      "day": "MON",
+      "start_time": "09:15 AM",
+      "end_time": "10:45 AM",
+      "location": "Online"
+    },
+    {
+      "code": "CSSWENG",
+      "title": "CSSWENG S01",
+      "course_name": "SOFTWARE ENGINEERING",
+      "day": "THU",
+      "start_time": "11:00 AM",
+      "end_time": "12:30 PM",
+      "location": "G206"
+    },
+    {
+      "code": "GESTSOC",
+      "title": "GESTSOC Z30",
+      "course_name": "SCIENCE, TECHNOLOGY, AND THE SOCIETY",
+      "day": "MON",
+      "start_time": "07:30 AM",
+      "end_time": "09:00 AM",
+      "location": "Online"
+    },
+    {
+      "code": "GESTSOC",
+      "title": "GESTSOC Z30",
+      "course_name": "SCIENCE, TECHNOLOGY, AND THE SOCIETY",
+      "day": "THU",
+      "start_time": "07:30 AM",
+      "end_time": "09:00 AM",
+      "location": "L227"
+    },
+    {
+      "code": "CSOPESY",
+      "title": "CSOPESY S07",
+      "course_name": "INTRODUCTION TO OPERATING SYSTEMS",
+      "day": "TUE",
+      "start_time": "11:00 AM",
+      "end_time": "12:30 PM",
+      "location": "Online"
+    },
+    {
+      "code": "CSOPESY",
+      "title": "CSOPESY S07",
+      "course_name": "INTRODUCTION TO OPERATING SYSTEMS",
+      "day": "FRI",
+      "start_time": "12:45 PM",
+      "end_time": "02:15 PM",
+      "location": "V304"
+    },
+    {
+      "code": "STHCIUX",
+      "title": "STHCIUX S10A",
+      "course_name": "HUMAN COMPUTER INTERACTIONS",
+      "day": "TUE",
+      "start_time": "09:15 AM",
+      "end_time": "10:45 AM",
+      "location": "Online"
+    },
+    {
+      "code": "STHCIUX",
+      "title": "STHCIUX S10A",
+      "course_name": "HUMAN COMPUTER INTERACTIONS",
+      "day": "FRI",
+      "start_time": "09:15 AM",
+      "end_time": "10:45 AM",
+      "location": "G202"
+    },
+    {
+      "code": "LASARE3",
+      "title": "LASARE3 S13",
+      "course_name": "LASALLIAN RECOLLECTION 3",
+      "day": "WED",
+      "start_time": "03:15 PM",
+      "end_time": "04:15 PM",
+      "location": "Y409"
+    }
+  ],
+  "ambiguous_rows": []
+}

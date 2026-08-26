@@ -8,7 +8,7 @@ from datetime import date, datetime
 from io import BytesIO
 from typing import Any
 
-from flask import Blueprint, flash, jsonify, redirect, request, send_file, url_for
+from flask import Blueprint, current_app, flash, jsonify, redirect, request, send_file, url_for
 from werkzeug.datastructures import FileStorage
 
 from app.config import DEFAULT_WEEKS, RECOLLECTION_TITLES
@@ -37,7 +37,6 @@ def index():
     Returns:
         The index.html file from the public directory
     """
-    from flask import current_app
     return send_file(
         current_app.static_folder + "/index.html",
         mimetype="text/html"
@@ -75,7 +74,14 @@ def inspect() -> Any:
         return jsonify({"error": "An unexpected error occurred while reading the PDF. Please ensure you uploaded a valid EAF PDF."}), 400
 
     if not events:
-        return jsonify({"error": "No scheduled events were found in the uploaded EAF. The file may not be a valid Enrollment Assessment Form."}), 400
+        # Return the unreadable rows too: when nothing parses, they are the
+        # only thing the student can send us to get the format fixed.
+        return jsonify(
+            {
+                "error": "No scheduled events were found in the uploaded EAF. The file may not be a valid Enrollment Assessment Form.",
+                "ambiguous_rows": [ar.__dict__ for ar in ambiguous_rows],
+            }
+        ), 400
 
     # Build recollection mappings: codes -> list of unique days
     recollection_map: dict[str, list[str]] = {}

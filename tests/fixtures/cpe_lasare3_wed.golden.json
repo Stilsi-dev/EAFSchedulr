@@ -1,0 +1,141 @@
+{
+  "suggested_filename": "11900004_T3_AY25-26_Schedule.ics",
+  "events": [
+    {
+      "code": "CALENG2",
+      "title": "CALENG2 E02",
+      "course_name": "INTEGRAL CALCULUS",
+      "day": "MON",
+      "start_time": "12:45 PM",
+      "end_time": "02:15 PM",
+      "location": "G203"
+    },
+    {
+      "code": "CALENG2",
+      "title": "CALENG2 E02",
+      "course_name": "INTEGRAL CALCULUS",
+      "day": "THU",
+      "start_time": "12:45 PM",
+      "end_time": "02:15 PM",
+      "location": "Online"
+    },
+    {
+      "code": "GESTSOC",
+      "title": "GESTSOC Y07",
+      "course_name": "SCIENCE, TECHNOLOGY, AND THE SOCIETY",
+      "day": "MON",
+      "start_time": "06:00 PM",
+      "end_time": "07:30 PM",
+      "location": "L207"
+    },
+    {
+      "code": "GESTSOC",
+      "title": "GESTSOC Y07",
+      "course_name": "SCIENCE, TECHNOLOGY, AND THE SOCIETY",
+      "day": "THU",
+      "start_time": "06:00 PM",
+      "end_time": "07:30 PM",
+      "location": "Online"
+    },
+    {
+      "code": "LBYCPG4",
+      "title": "LBYCPG4 E26",
+      "course_name": "LOGIC CIRCUITS AND DESIGN LABORATORY",
+      "day": "MON",
+      "start_time": "09:30 AM",
+      "end_time": "12:30 PM",
+      "location": "V311"
+    },
+    {
+      "code": "LOGDSGN",
+      "title": "LOGDSGN E22",
+      "course_name": "LOGIC CIRCUITS AND DESIGN LECTURE",
+      "day": "MON",
+      "start_time": "02:30 PM",
+      "end_time": "04:00 PM",
+      "location": "A904"
+    },
+    {
+      "code": "LOGDSGN",
+      "title": "LOGDSGN E22",
+      "course_name": "LOGIC CIRCUITS AND DESIGN LECTURE",
+      "day": "THU",
+      "start_time": "02:30 PM",
+      "end_time": "04:00 PM",
+      "location": "Online"
+    },
+    {
+      "code": "MXSIGFN",
+      "title": "MXSIGFN E25",
+      "course_name": "FUNDAMENTALS OF MIXED SIGNALS AND SENSORS",
+      "day": "TUE",
+      "start_time": "11:00 AM",
+      "end_time": "12:30 PM",
+      "location": "A1101"
+    },
+    {
+      "code": "MXSIGFN",
+      "title": "MXSIGFN E25",
+      "course_name": "FUNDAMENTALS OF MIXED SIGNALS AND SENSORS",
+      "day": "FRI",
+      "start_time": "11:00 AM",
+      "end_time": "12:30 PM",
+      "location": "Online"
+    },
+    {
+      "code": "ECNOMIC",
+      "title": "ECNOMIC E35",
+      "course_name": "ENGINEERING ECONOMY",
+      "day": "TUE",
+      "start_time": "07:30 AM",
+      "end_time": "09:00 AM",
+      "location": "V200A"
+    },
+    {
+      "code": "ECNOMIC",
+      "title": "ECNOMIC E35",
+      "course_name": "ENGINEERING ECONOMY",
+      "day": "FRI",
+      "start_time": "07:30 AM",
+      "end_time": "09:00 AM",
+      "location": "Online"
+    },
+    {
+      "code": "ENGMANA",
+      "title": "ENGMANA E41",
+      "course_name": "ENGINEERING MANAGEMENT",
+      "day": "TUE",
+      "start_time": "09:15 AM",
+      "end_time": "10:15 AM",
+      "location": "G207"
+    },
+    {
+      "code": "ENGMANA",
+      "title": "ENGMANA E41",
+      "course_name": "ENGINEERING MANAGEMENT",
+      "day": "FRI",
+      "start_time": "09:15 AM",
+      "end_time": "10:15 AM",
+      "location": "Online"
+    },
+    {
+      "code": "LASARE3",
+      "title": "LASARE3 C56",
+      "course_name": "LASALLIAN RECOLLECTION 3",
+      "day": "WED",
+      "start_time": "03:15 PM",
+      "end_time": "04:15 PM",
+      "location": "TBA"
+    },
+    {
+      "code": "LCLSTRI",
+      "title": "LCLSTRI Z24",
+      "course_name": "LASALLIAN STUDIES 3",
+      "day": "THU",
+      "start_time": "10:00 AM",
+      "end_time": "12:00 PM",
+      "location": "Online"
+    }
+  ],
+  "ambiguous_rows": []
+}

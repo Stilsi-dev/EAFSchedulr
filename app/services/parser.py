@@ -41,11 +41,15 @@ COURSE_ROW_PATTERN = re.compile(
     r"([A-Z0-9]+)\s+([\d.]+)\s+(.*)$"
 )
 
+# The location group excludes `|` deliberately. With `[^,]*` a new
+# pipe-delimited column (e.g. a modality field) would be absorbed into the
+# room silently; excluding it makes the row fail instead, so the user is
+# told what could not be read rather than handed a wrong room.
 SCHEDULE_SEGMENT_PATTERN = re.compile(
     r"^(MON|TUE|WED|THU|FRI|SAT)\s*\|\s*"
     r"([0-9]{1,2}:[0-9]{2}\s*[AP]M)\s*-\s*"
     r"([0-9]{1,2}:[0-9]{2}\s*[AP]M)"
-    r"(?:\s*\|\s*([^,]*))?\s*$",
+    r"(?:\s*\|\s*([^,|]*))?\s*$",
     re.IGNORECASE,
 )
 
@@ -122,6 +126,22 @@ def parse_eaf_pdf(uploaded_file: FileStorage) -> ParsedEAF:
     except Exception as exc:
         raise ValueError("Could not extract text from PDF. The file may be corrupted.") from exc
     
+    return parse_eaf_text(text)
+
+
+def parse_eaf_text(text: str) -> ParsedEAF:
+    """Extract events from already-extracted EAF text.
+
+    Split out from `parse_eaf_pdf` so the parsing rules can be exercised
+    against plain-text fixtures, without committing PDFs (and the personal
+    data inside them) to the repository.
+
+    Args:
+        text: Raw text extracted from an EAF PDF
+
+    Returns:
+        ParsedEAF object with extracted events and ambiguous rows
+    """
     text = text.replace("\r", "")
 
     # Build suggested filename from student ID and session metadata
