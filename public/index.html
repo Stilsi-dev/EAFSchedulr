@@ -1,37 +1,134 @@
-
 <!doctype html>
-  <html lang="en">
-    <head>
-      <meta charset="UTF-8" />
-      <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-      <link rel="icon" type="image/svg+xml" href="/schedulr-logo.svg" />
-      <meta name="description" content="Frontend development entrypoint for the EAF Schedulr redesign.">
-      <title>EAF Schedulr — EAF to Google Calendar</title>
-      <!-- Global site tag (gtag.js) - Google Analytics -->
-      <script async src="https://www.googletagmanager.com/gtag/js?id=G-LEEDEK781L"></script>
-      <script>
-        window.dataLayer = window.dataLayer || [];
-        function gtag(){dataLayer.push(arguments);}
-        gtag('js', new Date());
-        gtag('config', 'G-LEEDEK781L');
-      </script>
-      <style>
-        html,
-        body {
-          height: 100%;
-          margin: 0;
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/svg+xml" href="/schedulr-logo.svg" />
+    <meta name="description" content="Frontend development entrypoint for the EAF Schedulr redesign.">
+    <title>EAF Schedulr — EAF to Google Calendar</title>
+
+    <!--
+      Theme bootstrap. Must stay inline, synchronous, and ahead of the
+      stylesheet.
+
+      The theme lives in a React `useEffect`, which cannot run until the whole
+      bundle has downloaded, parsed and mounted. Until then `<html>` has no
+      `.dark` class, so a student who chose dark mode was served the light
+      ground for the entire boot - measured at ~1.6s on a throttled phone - and
+      then watched it flip. Reading the same key here settles the question
+      before the first pixel.
+
+      Kept deliberately tiny and dependency-free: it blocks the parser, so
+      every byte is on the critical path. The key and its JSON encoding must
+      match the `darkMode` reads and writes in App.tsx.
+    -->
+    <script>
+      (function () {
+        try {
+          var saved = localStorage.getItem('darkMode');
+          if (saved && JSON.parse(saved)) {
+            document.documentElement.classList.add('dark');
+          }
+        } catch (e) {
+          /* Private mode or blocked storage: light is the documented default. */
+        }
+      })();
+    </script>
+
+    <style>
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+      }
+
+      #root {
+        height: 100%;
+      }
+
+      /* The ground, painted before the stylesheet arrives so the very first
+         frame is already the right theme. Mirrors `--background` in theme.css;
+         the app's gradient paints over it with nothing to flash through. */
+      html {
+        background: #ffffff;
+      }
+
+      html.dark {
+        background: oklch(0.16 0.015 255);
+      }
+
+      /* Native form controls, scrollbars and the date picker follow the theme
+         instead of rendering light-on-dark. */
+      html {
+        color-scheme: light;
+      }
+
+      html.dark {
+        color-scheme: dark;
+      }
+    </style>
+
+    <!--
+      Google Analytics, moved off the critical path.
+
+      Loading gtag.js from `<head>` cost a measured 1072ms of First Contentful
+      Paint and every millisecond of Total Blocking Time (261ms) on a throttled
+      phone: it competes with the app bundle for both the connection and the
+      main thread, and the student is looking at nothing at all while it wins.
+
+      The commands are still queued here, synchronously, with their real
+      timestamps - `gtag()` only pushes onto `dataLayer`, which costs nothing.
+      Only the fetch and execution are deferred, and gtag.js replays the queue
+      when it arrives, so the pageview is not lost.
+
+      The delay is a floor, not a guess. `load` alone fires while React is
+      still mounting, so idle time exists but the app has not settled into it -
+      scheduling there just moved gtag.js's ~250ms of parsing from before first
+      paint to on top of it. Waiting past the point where the student can act,
+      then asking for idle, keeps it out of both.
+    -->
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+      gtag('config', 'G-LEEDEK781L');
+
+      (function () {
+        var loaded = false;
+
+        function loadGtag() {
+          if (loaded) return;
+          loaded = true;
+          var s = document.createElement('script');
+          s.async = true;
+          s.src = 'https://www.googletagmanager.com/gtag/js?id=G-LEEDEK781L';
+          document.head.appendChild(s);
         }
 
-        #root {
-          height: 100%;
+        function schedule() {
+          setTimeout(function () {
+            if ('requestIdleCallback' in window) {
+              // The timeout is the backstop: on a page the student never
+              // stops touching, idle may not arrive on its own.
+              requestIdleCallback(loadGtag, { timeout: 5000 });
+            } else {
+              loadGtag();
+            }
+          }, 2000);
         }
-      </style>
-      <script type="module" crossorigin src="/assets/index-DWO_9kOB.js"></script>
-      <link rel="stylesheet" crossorigin href="/assets/index-DFq1ty2X.css">
-    </head>
 
-    <body>
-      <div id="root"></div>
-    </body>
-  </html>
-  
+        if (document.readyState === 'complete') {
+          schedule();
+        } else {
+          addEventListener('load', schedule, { once: true });
+        }
+      })();
+    </script>
+    <script type="module" crossorigin src="/assets/index-fFpwc-5f.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-B8yT0Vjc.css">
+  </head>
+
+  <body>
+    <div id="root"></div>
+  </body>
+</html>

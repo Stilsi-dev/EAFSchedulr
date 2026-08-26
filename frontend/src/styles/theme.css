@@ -1,125 +1,155 @@
 @custom-variant dark (&:is(.dark *));
 
+/**
+ * EAF Schedulr design tokens.
+ *
+ * Values are the emerald/teal identity the product already shipped - this file
+ * records it rather than changing it. Each token exists because the same
+ * light/dark pair was being written by hand in several places; anything used
+ * once stays a utility at the call site.
+ *
+ * Text runs in five tiers, strongest to faintest. Every tier clears WCAG AA
+ * (4.5:1) against the surface it is used on, in both themes - which is why
+ * there is no sixth, quieter tier: below `subtle` nothing passes.
+ *
+ *   strong-foreground  course names and other content that must win
+ *   foreground         headings, field values, inherited body text
+ *   label-foreground   form labels
+ *   muted-foreground   supporting copy and hints
+ *   subtle-foreground  metadata, captions, placeholders - the AA floor
+ *
+ * The tiers are measured against the *painted* ground, not `--background`.
+ * Nothing in this product sits on flat white: the page is a gradient, and its
+ * emerald corner is darker than the token suggests. Checked against `#ffffff`
+ * the old `subtle` read 4.83:1 and looked safe; checked against the pixels it
+ * actually lands on it measured 4.50:1, passing by nothing. The light ratios
+ * below are the worst point of the gradient, so the floor is a floor:
+ *
+ *   light (on the emerald corner)   16.4 / 9.6 / 6.9 / 5.6
+ *   dark  (on slate-900)            17.1 / 12.1 / 8.6 / 7.0
+ */
+
 :root {
-  --font-size: 16px;
-  --background: #ffffff;
-  --foreground: oklch(0.145 0 0);
-  --card: #ffffff;
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: #030213;
-  --primary-foreground: oklch(1 0 0);
-  --secondary: oklch(0.95 0.0058 264.53);
-  --secondary-foreground: #030213;
-  --muted: #ececf0;
-  --muted-foreground: #717182;
-  --accent: #e9ebef;
-  /* New accent: soft blue */
-  --accent: #60A5FA; /* light blue */
-  --accent-foreground: #07224C; /* dark navy for contrast */
-  --destructive: #d4183d;
-  --destructive-foreground: #ffffff;
-  --border: rgba(0, 0, 0, 0.1);
-  --input: transparent;
-  --input-background: #f3f3f5;
-  --switch-background: #cbced4;
+
   --font-weight-medium: 500;
   --font-weight-normal: 400;
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.646 0.222 41.116);
-  --chart-2: oklch(0.6 0.118 184.704);
-  --chart-3: oklch(0.398 0.07 227.392);
-  --chart-4: oklch(0.828 0.189 84.429);
-  --chart-5: oklch(0.769 0.188 70.08);
   --radius: 0.625rem;
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: #030213;
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+
+  /* Ground */
+  --background: #ffffff;
+
+  /* Text tiers */
+  --strong-foreground: #030712;
+  --foreground: #111827;
+  --label-foreground: #374151;
+  --muted-foreground: #4b5563;
+  /* Between gray-500 and gray-600. gray-500 is the value this tier wants and
+     the one it cannot have: it clears 4.5:1 on white and misses on the
+     gradient. Same hue, enough lightness taken out to hold 5.6:1 everywhere. */
+  --subtle-foreground: #5b6472;
+
+  /* Glass surfaces. `card` is the panel, `card-inset` the fields and
+     inner wells that sit on top of it. */
+  --card: rgb(255 255 255 / 0.6);
+  --card-foreground: #111827;
+  --card-border: rgb(255 255 255 / 0.5);
+  --card-inset: rgb(255 255 255 / 0.7);
+  --card-inset-border: rgb(229 231 235 / 0.5);
+  --card-well: rgb(255 255 255 / 0.7);
+
+  /* Brand */
+  --primary: #059669;
+  --primary-foreground: #ffffff;
+  --accent: #059669;
+  --accent-foreground: #ffffff;
+  /* A focus ring is a control indicator, so it owes 3:1 against what surrounds
+     it (WCAG 1.4.11) - and here that is a near-white field on a near-white
+     card. emerald-500 managed 2.5:1: bright, and still not enough. One step
+     down carries 3.8:1 and reads no less emerald. Dark mode keeps its lighter
+     ring, which already measures 8.4:1 against slate. */
+  --ring: #059669;
+
+  /* Supporting */
+  --secondary: #f3f4f6;
+  --secondary-foreground: #111827;
+  --muted: #ececf0;
+  --border: rgb(0 0 0 / 0.1);
+  --input: transparent;
+  --input-background: rgb(255 255 255 / 0.7);
+  --switch-background: #cbced4;
+  --destructive: #dc2626;
+  --destructive-foreground: #ffffff;
 }
 
 .dark {
+
   --background: oklch(0.16 0.015 255);
-  --foreground: oklch(0.97 0.005 180);
-  --card: oklch(0.19 0.02 250);
-  --card-foreground: oklch(0.95 0.008 180);
-  --popover: oklch(0.18 0.018 255);
-  --popover-foreground: oklch(0.96 0.006 180);
-  --primary: oklch(0.88 0.12 165);
-  --primary-foreground: oklch(0.18 0.02 250);
-  --secondary: oklch(0.28 0.025 245);
-  --secondary-foreground: oklch(0.92 0.008 170);
-  --muted: oklch(0.25 0.02 250);
-  --muted-foreground: oklch(0.65 0.015 200);
-  /* Dark mode accent: deeper indigo */
-  --accent: #1E3A8A; /* indigo-800 */
-  --accent-foreground: #E6F0FF; /* pale blue/white for contrast */
-  --destructive: oklch(0.45 0.18 25);
-  --destructive-foreground: oklch(0.95 0.01 25);
-  --border: oklch(0.28 0.025 245);
-  --input: oklch(0.25 0.02 250);
-  --ring: oklch(0.75 0.1 165);
-  --font-weight-medium: 500;
-  --font-weight-normal: 400;
-  --chart-1: oklch(0.65 0.18 165);
-  --chart-2: oklch(0.7 0.15 200);
-  --chart-3: oklch(0.75 0.16 70);
-  --chart-4: oklch(0.68 0.2 280);
-  --chart-5: oklch(0.72 0.18 40);
-  --sidebar: oklch(0.21 0.02 250);
-  --sidebar-foreground: oklch(0.94 0.008 180);
-  --sidebar-primary: oklch(0.7 0.15 165);
-  --sidebar-primary-foreground: oklch(0.18 0.02 250);
-  --sidebar-accent: oklch(0.28 0.03 245);
-  --sidebar-accent-foreground: oklch(0.94 0.008 180);
-  --sidebar-border: oklch(0.3 0.025 245);
-  --sidebar-ring: oklch(0.7 0.12 165);
+
+  --strong-foreground: #f3f4f6;
+  --foreground: #f3f4f6;
+  --label-foreground: #d1d5db;
+  --muted-foreground: #9ca3af;
+  --subtle-foreground: #9ca3af;
+
+  --card: rgb(30 41 59 / 0.6);
+  --card-foreground: #f3f4f6;
+  --card-border: rgb(16 185 129 / 0.2);
+  --card-inset: rgb(51 65 85 / 0.5);
+  --card-inset-border: rgb(71 85 105 / 0.5);
+  --card-well: rgb(15 23 42 / 0.3);
+
+  --primary: #34d399;
+  --primary-foreground: #0f172a;
+  --accent: #34d399;
+  --accent-foreground: #0f172a;
+  --ring: #34d399;
+
+  --secondary: #334155;
+  --secondary-foreground: #f3f4f6;
+  --muted: #1e293b;
+  --border: rgb(71 85 105 / 0.5);
+  --input: rgb(51 65 85 / 0.5);
+  --input-background: rgb(51 65 85 / 0.5);
+  --destructive: #f87171;
+  --destructive-foreground: #0f172a;
 }
 
 @theme inline {
   --color-background: var(--background);
+
+  --color-strong-foreground: var(--strong-foreground);
   --color-foreground: var(--foreground);
+  --color-label-foreground: var(--label-foreground);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-subtle-foreground: var(--subtle-foreground);
+
   --color-card: var(--card);
   --color-card-foreground: var(--card-foreground);
-  --color-popover: var(--popover);
-  --color-popover-foreground: var(--popover-foreground);
+  --color-card-border: var(--card-border);
+  --color-card-inset: var(--card-inset);
+  --color-card-inset-border: var(--card-inset-border);
+  --color-card-well: var(--card-well);
+
   --color-primary: var(--primary);
   --color-primary-foreground: var(--primary-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-ring: var(--ring);
+
   --color-secondary: var(--secondary);
   --color-secondary-foreground: var(--secondary-foreground);
   --color-muted: var(--muted);
-  --color-muted-foreground: var(--muted-foreground);
-  --color-accent: var(--accent);
-  --color-accent-foreground: var(--accent-foreground);
-  --color-destructive: var(--destructive);
-  --color-destructive-foreground: var(--destructive-foreground);
   --color-border: var(--border);
   --color-input: var(--input);
   --color-input-background: var(--input-background);
   --color-switch-background: var(--switch-background);
-  --color-ring: var(--ring);
-  --color-chart-1: var(--chart-1);
-  --color-chart-2: var(--chart-2);
-  --color-chart-3: var(--chart-3);
-  --color-chart-4: var(--chart-4);
-  --color-chart-5: var(--chart-5);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
-  --color-sidebar: var(--sidebar);
-  --color-sidebar-foreground: var(--sidebar-foreground);
-  --color-sidebar-primary: var(--sidebar-primary);
-  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
-  --color-sidebar-accent: var(--sidebar-accent);
-  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
-  --color-sidebar-border: var(--sidebar-border);
-  --color-sidebar-ring: var(--sidebar-ring);
 }
 
 @layer base {
@@ -136,32 +166,38 @@
   * These are in @layer base, so Tailwind utility classes (like text-sm, text-lg) automatically override them.
   */
 
+  /* 100% inherits the reader's browser font-size preference; a px value here
+     silently overrides it and every rem in the app with it. */
   html {
-    font-size: var(--font-size);
+    font-size: 100%;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    font-weight: var(--font-weight-medium);
+    text-wrap: balance;
   }
 
   h1 {
     font-size: var(--text-2xl);
-    font-weight: var(--font-weight-medium);
-    line-height: 1.5;
+    line-height: 1.1;
   }
 
   h2 {
     font-size: var(--text-xl);
-    font-weight: var(--font-weight-medium);
-    line-height: 1.5;
+    line-height: 1.25;
   }
 
   h3 {
     font-size: var(--text-lg);
-    font-weight: var(--font-weight-medium);
-    line-height: 1.5;
+    line-height: 1.35;
   }
 
   h4 {
     font-size: var(--text-base);
-    font-weight: var(--font-weight-medium);
-    line-height: 1.5;
+    line-height: 1.4;
   }
 
   label {

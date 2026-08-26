@@ -1,0 +1,36 @@
+/**
+ * EAF Schedulr type families.
+ *
+ * This file was previously empty while still being imported, which meant the
+ * product had never actually chosen a typeface - it inherited Tailwind's
+ * default stack by omission. The stack below is close to that default on
+ * purpose, but it is now a decision with reasons attached:
+ *
+ *   - The app's Content-Security-Policy sets `font-src 'self'`, so a hosted
+ *     webfont would be blocked outright and a self-hosted one would add
+ *     render-blocking bytes to a page students open once a term, frequently on
+ *     campus wifi. Nothing here costs a request.
+ *   - The platform UI faces this resolves to - SF Pro, Segoe UI Variable,
+ *     Roboto - are all well-hinted at the small sizes this interface leans on,
+ *     and each is already the face its reader reads everything else in.
+ *   - This is an Operate surface. Type carries hierarchy and data here, not
+ *     voice; the brand lives in the emerald identity and the writing.
+ *
+ * If a display face is ever wanted for the hero, it needs self-hosted files
+ * committed to the repo - see the CSP note above.
+ */
+
+@theme {
+  /* Platform UI face first, named fallbacks next, generic last. Emoji families
+     sit at the very end so they can never win a Latin glyph. */
+  --font-sans:
+    ui-sans-serif, system-ui, -apple-system, "Segoe UI Variable Text", "Segoe UI",
+    Roboto, "Noto Sans", "Helvetica Neue", Arial, sans-serif,
+    "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji";
+
+  /* Used for the generated filename, where character-level accuracy matters:
+     a student checks this string against what lands in their downloads. */
+  --font-mono:
+    ui-monospace, SFMono-Regular, "SF Mono", "Cascadia Mono", "Segoe UI Mono",
+    Menlo, Consolas, "Liberation Mono", monospace;
+}

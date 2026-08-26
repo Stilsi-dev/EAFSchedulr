@@ -1,0 +1,104 @@
+/**
+ * EAF Schedulr motion.
+ *
+ * The product is a tool a student uses once a term, mostly on a phone, to get
+ * one job done. So motion here explains state and acknowledges actions, and
+ * nothing loops: an animation that never ends is a battery cost with no message.
+ *
+ * There is exactly one authored moment - "the seal" - when the calendar is
+ * ready. It plays once and then the panel is completely still, because the
+ * stillness is what says the job is finished.
+ */
+
+:root {
+  /* Confident deceleration. Used for anything that arrives. */
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* --- The seal -------------------------------------------------------------
+   The white disc carrying the check mark settles into place, and a single ring
+   of light expands out of it and dissipates. Both run once, forwards. */
+
+@keyframes seal-settle {
+  from {
+    opacity: 0;
+    transform: scale(0.86);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes seal-bloom {
+  from {
+    opacity: 0.45;
+    transform: scale(0.7);
+  }
+  to {
+    opacity: 0;
+    transform: scale(1.9);
+  }
+}
+
+.seal {
+  animation: seal-settle 520ms var(--ease-out-expo) both;
+}
+
+.seal-bloom {
+  animation: seal-bloom 900ms var(--ease-out-expo) both;
+}
+
+/* --- Reduced motion -------------------------------------------------------
+   Spatial movement goes; meaning stays. Entrances resolve immediately at their
+   final position rather than being hidden, hover lifts stop lifting while their
+   colour and shadow still respond, and the bloom does not travel.
+
+   Deliberately NOT a global `animation: none` kill: the upload badge's pulse is
+   the only signal that the PDF is being read, and the error and success states
+   still need to announce themselves. Reduced motion means less movement, not
+   less feedback. */
+
+@media (prefers-reduced-motion: reduce) {
+  /* tw-animate-css entrances: show the element, skip the travel. */
+  [class*="animate-in"] {
+    animation: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+  }
+
+  .seal {
+    animation: none;
+  }
+
+  /* The bloom cannot expand, so it rests as a faint halo instead. */
+  .seal-bloom {
+    animation: none;
+    opacity: 0.25;
+    transform: none;
+  }
+
+  /* Hover and group-hover movement is removed; the transition on colour,
+     background and shadow that accompanies it still runs, so every control
+     still acknowledges the pointer.
+
+     Tailwind v4 compiles `translate-*` / `scale-*` / `rotate-*` to the discrete
+     `translate`, `scale` and `rotate` properties rather than to `transform`, so
+     neutralising `transform` alone would leave every hover lift moving. */
+  a:hover,
+  button:hover,
+  label:hover,
+  .group:hover [class*="group-hover:translate"],
+  .group:hover [class*="group-hover:-translate"],
+  .group:hover [class*="group-hover:scale"] {
+    translate: none !important;
+    scale: none !important;
+    rotate: none !important;
+    transform: none !important;
+  }
+
+  /* Progress stays legible but slows to a gentle fade rather than a throb. */
+  .animate-pulse {
+    animation-duration: 3s;
+  }
+}

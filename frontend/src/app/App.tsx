@@ -1,7 +1,26 @@
 import { useState, useRef, useEffect, useMemo, type ChangeEvent, type DragEvent } from "react";
 import { Upload, Calendar, CheckCircle2, AlertCircle, Sparkles, FileText, ArrowRight, Download, BookOpen, CalendarDays, Shield, Mail, Github, Heart, MapPin, Moon, Sun } from "lucide-react";
+import { Alert } from "./components/ui/Alert";
+import { AmbiguousRowList } from "./components/ui/AmbiguousRowList";
+import { Field } from "./components/ui/Field";
+import { GlassCard } from "./components/ui/GlassCard";
+import { IconTile } from "./components/ui/IconTile";
 
 const WEEKDAY_LABELS = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"];
+
+const WEEKDAY_NAMES: Record<string, string> = {
+  SUN: "Sunday",
+  MON: "Monday",
+  TUE: "Tuesday",
+  WED: "Wednesday",
+  THU: "Thursday",
+  FRI: "Friday",
+  SAT: "Saturday",
+};
+
+// Mirrors MAX_PDF_SIZE_BYTES in app/config.py. Checked here too so an oversized
+// file is refused before it is uploaded, not after.
+const MAX_PDF_BYTES = 10 * 1024 * 1024;
 
 function getSelectedWeekday(dateValue: string) {
   const [year, month, day] = dateValue.split("-").map(Number);
@@ -10,6 +29,55 @@ function getSelectedWeekday(dateValue: string) {
   }
 
   return WEEKDAY_LABELS[new Date(year, month - 1, day).getDay()];
+}
+
+/** Join weekday codes into prose: "Tuesday", "Tuesday or Thursday". */
+function formatWeekdayList(days: string[]) {
+  const names = days.map((day) => WEEKDAY_NAMES[day.toUpperCase()] ?? day);
+  if (names.length <= 1) {
+    return names[0] ?? "";
+  }
+
+  return `${names.slice(0, -1).join(", ")} or ${names[names.length - 1]}`;
+}
+
+/**
+ * Some browsers report an empty MIME type for dragged files, so fall back to
+ * the extension rather than silently rejecting a real PDF.
+ */
+function isPdfFile(candidate: File) {
+  return candidate.type === "application/pdf" || /\.pdf$/i.test(candidate.name);
+}
+
+/**
+ * Read an error message from a response that may not be JSON at all - rate
+ * limiting and unhandled server errors both return HTML.
+ */
+async function readErrorMessage(response: Response, fallback: string) {
+  try {
+    const payload = await response.json();
+    if (payload?.error) {
+      return { message: String(payload.error), payload };
+    }
+  } catch {
+    // Fall through to the status-based message below.
+  }
+
+  if (response.status === 429) {
+    return {
+      message: "Too many uploads from this connection. Wait a minute, then try again.",
+      payload: null,
+    };
+  }
+
+  if (response.status >= 500) {
+    return {
+      message: "The app server ran into a problem. Try again in a moment.",
+      payload: null,
+    };
+  }
+
+  return { message: fallback, payload: null };
 }
 
 function formatCourseName(courseName: string) {
@@ -51,6 +119,7 @@ type InspectedEvent = {
 };
 
 type AmbiguousRow = {
+  code: string;
   row_number: number;
   text: string;
   reason: string;
@@ -59,6 +128,29 @@ type AmbiguousRow = {
 type AmbiguousRowGroup = {
   code: string;
   rows: AmbiguousRow[];
+};
+
+/** One recollection the EAF contains, and the weekdays it may fall on. */
+type RecollectionField = {
+  code: string;
+  name: string;
+  days: string[];
+};
+
+/**
+ * A parse failure means the file itself cannot be used, so the form is
+ * replaced. A submit failure leaves the form standing and offers a retry.
+ * `kind` decides the heading: blaming the PDF for a dropped connection sends
+ * the student off to re-download an EAF that was never the problem.
+ */
+type ParseError = {
+  kind: "file" | "transport";
+  message: string;
+};
+
+type SubmitError = {
+  kind: "transport" | "server";
+  message: string;
 };
 
 type CourseSummary = {
@@ -133,19 +225,26 @@ export default function App() {
   const [isDragging, setIsDragging] = useState(false);
   const [termStartDate, setTermStartDate] = useState("");
   const [numWeeks, setNumWeeks] = useState("14");
-  const [lasareDate, setLasareDate] = useState("");
+  const [recollectionDates, setRecollectionDates] = useState<Record<string, string>>({});
   const [validationErrors, setValidationErrors] = useState<{
+    acknowledgeRows?: string;
     termStartDate?: string;
     numWeeks?: string;
-    lasareDate?: string;
-    general?: string;
+    recollections?: Record<string, string>;
   }>({});
-  const [ambiguousRows, setAmbiguousRows] = useState<AmbiguousRowGroup[]>([]);
-  const [hasLasallianRecollection, setHasLasallianRecollection] = useState(false);
-  const [recollectionWeekdays, setRecollectionWeekdays] = useState<string[]>([]);
+  // The uploaded file cannot be used at all - replaces the form.
+  const [parseError, setParseError] = useState<ParseError | null>(null);
+  // Creating the calendar failed - the form stays put so the student can retry.
+  const [submitError, setSubmitError] = useState<SubmitError | null>(null);
+  const [statusMessage, setStatusMessage] = useState("");
+  const [ambiguousRows, setAmbiguousRows] = useState<AmbiguousRow[]>([]);
+  const [acknowledgedMissingRows, setAcknowledgedMissingRows] = useState(false);
+  const [reportCopied, setReportCopied] = useState(false);
+  const [recollectionFields, setRecollectionFields] = useState<RecollectionField[]>([]);
   const [inspectedEvents, setInspectedEvents] = useState<InspectedEvent[]>([]);
   const [generatedFilename, setGeneratedFilename] = useState("eaf-calendar.ics");
   const [downloadUrl, setDownloadUrl] = useState("");
+  const [isInspecting, setIsInspecting] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedAt, setGeneratedAt] = useState("");
   const [isScheduleCreated, setIsScheduleCreated] = useState(false);
@@ -169,20 +268,32 @@ export default function App() {
     }
   };
 
+  const hasLasallianRecollection = recollectionFields.length > 0;
+
+  // Each scroll timer is cleared on re-run: uploading twice in quick succession
+  // otherwise queues two competing smooth scrolls.
   useEffect(() => {
-    if (file && !isScheduleCreated) {
-      setTimeout(() => {
-        scheduleDetailsRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
-      }, 300);
+    if (!file || isScheduleCreated) {
+      return;
     }
+
+    const timer = setTimeout(() => {
+      scheduleDetailsRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 300);
+
+    return () => clearTimeout(timer);
   }, [file, isScheduleCreated]);
 
   useEffect(() => {
-    if (isScheduleCreated) {
-      setTimeout(() => {
-        successSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-      }, 500);
+    if (!isScheduleCreated) {
+      return;
     }
+
+    const timer = setTimeout(() => {
+      successSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 500);
+
+    return () => clearTimeout(timer);
   }, [isScheduleCreated]);
 
   useEffect(() => {
@@ -209,24 +320,59 @@ export default function App() {
     e.preventDefault();
     setIsDragging(false);
     const droppedFile = e.dataTransfer.files[0];
-    if (droppedFile?.type === "application/pdf") {
-      void inspectFile(droppedFile);
+    if (droppedFile) {
+      acceptFile(droppedFile);
     }
+  };
+
+  /**
+   * Refuse a file the server would reject anyway, and say why. Dropping the
+   * wrong thing used to do nothing at all, which reads as a broken page.
+   */
+  const acceptFile = (candidate: File) => {
+    if (!isPdfFile(candidate)) {
+      setFile(null);
+      setParseError({
+        kind: "file",
+        message: `"${candidate.name}" is not a PDF. Upload the EAF PDF you downloaded from Archers Hub.`,
+      });
+      setStatusMessage("That file is not a PDF.");
+      return;
+    }
+
+    if (candidate.size > MAX_PDF_BYTES) {
+      const sizeInMb = (candidate.size / 1024 / 1024).toFixed(1);
+      setFile(null);
+      setParseError({
+        kind: "file",
+        message: `"${candidate.name}" is ${sizeInMb}MB. The limit is 10MB - an EAF is normally well under that, so check you picked the right file.`,
+      });
+      setStatusMessage("That file is too large.");
+      return;
+    }
+
+    void inspectFile(candidate);
   };
 
   const inspectFile = async (selectedFile: File) => {
     setFile(selectedFile);
     setValidationErrors({});
+    setParseError(null);
+    setSubmitError(null);
     setAmbiguousRows([]);
-    setHasLasallianRecollection(false);
-    setRecollectionWeekdays([]);
+    setAcknowledgedMissingRows(false);
+    setReportCopied(false);
+    setRecollectionFields([]);
+    setRecollectionDates({});
     setInspectedEvents([]);
     setGeneratedFilename(selectedFile.name.replace(/\.pdf$/i, ".ics"));
     setDownloadUrl("");
     setGeneratedAt("");
     setIsScheduleCreated(false);
     setShowAllCourses(false);
-    
+    setIsInspecting(true);
+    setStatusMessage(`Reading ${selectedFile.name}...`);
+
     const formData = new FormData();
     formData.append("eaf_pdf", selectedFile);
 
@@ -236,27 +382,58 @@ export default function App() {
         body: formData,
       });
 
-      const payload = await response.json();
-
       if (!response.ok) {
-        setValidationErrors({ general: payload.error || "Could not inspect the uploaded EAF." });
-        setAmbiguousRows(Array.isArray(payload.ambiguous_rows) ? payload.ambiguous_rows : []);
+        const { message, payload } = await readErrorMessage(
+          response,
+          "Could not read the uploaded EAF.",
+        );
+        setParseError({ kind: "file", message });
+        setAmbiguousRows(Array.isArray(payload?.ambiguous_rows) ? payload.ambiguous_rows : []);
+        setStatusMessage(message);
         return;
       }
 
-      setHasLasallianRecollection(Boolean(payload.has_recollection));
+      const payload = await response.json();
+      const events: InspectedEvent[] = Array.isArray(payload.events) ? payload.events : [];
+      const recollectionDays = (payload.recollection_days ?? {}) as Record<string, string[]>;
+
+      // One field per recollection code. The server validates each code against
+      // its own weekday, so the UI has to collect each one separately.
+      const fields: RecollectionField[] = Object.keys(recollectionDays)
+        .sort()
+        .map((code) => ({
+          code,
+          name:
+            events.find((event) => event.code === code)?.course_name
+            ?? code,
+          days: recollectionDays[code].map((day) => day.toUpperCase()),
+        }));
+
       setGeneratedFilename(payload.generated_filename || selectedFile.name.replace(/\.pdf$/i, ".ics"));
-      setInspectedEvents(Array.isArray(payload.events) ? payload.events : []);
-      setAmbiguousRows([]);
-      setRecollectionWeekdays(
-        Object.values((payload.recollection_days ?? {}) as Record<string, string[]>)
-          .flat()
-          .map((day) => day.toUpperCase())
-          .filter((day: string, index: number, allDays: string[]) => allDays.indexOf(day) === index)
+      setInspectedEvents(events);
+      setAmbiguousRows(Array.isArray(payload.ambiguous_rows) ? payload.ambiguous_rows : []);
+      setRecollectionFields(fields);
+      setRecollectionDates(Object.fromEntries(fields.map((field) => [field.code, ""])));
+
+      const courseCount = payload.course_count ?? 0;
+      const unreadable = Array.isArray(payload.ambiguous_rows) ? payload.ambiguous_rows.length : 0;
+      setStatusMessage(
+        `Read ${courseCount} ${courseCount === 1 ? "course" : "courses"} from ${selectedFile.name}.`
+        + (unreadable > 0
+          ? ` ${unreadable} ${unreadable === 1 ? "row" : "rows"} could not be read.`
+          : "")
+        + " Fill in your schedule details below.",
       );
     } catch {
-      setValidationErrors({ general: "Could not inspect the uploaded EAF." });
+      setParseError({
+        kind: "transport",
+        message: "Could not reach the app server. Check your connection, then upload the file again.",
+      });
       setAmbiguousRows([]);
+      setAcknowledgedMissingRows(false);
+      setStatusMessage("Could not reach the app server.");
+    } finally {
+      setIsInspecting(false);
     }
   };
 
@@ -265,7 +442,7 @@ export default function App() {
     // Allow re-selecting the same file by clearing the input value right away.
     e.target.value = "";
     if (selectedFile) {
-      void inspectFile(selectedFile);
+      acceptFile(selectedFile);
     }
   };
 
@@ -274,9 +451,15 @@ export default function App() {
     setFile(null);
     setTermStartDate("");
     setNumWeeks("14");
-    setLasareDate("");
+    setRecollectionDates({});
+    setRecollectionFields([]);
     setValidationErrors({});
+    setParseError(null);
+    setSubmitError(null);
+    setStatusMessage("");
     setAmbiguousRows([]);
+    setAcknowledgedMissingRows(false);
+    setReportCopied(false);
     setInspectedEvents([]);
     setGeneratedFilename("eaf-calendar.ics");
     setDownloadUrl("");
@@ -302,55 +485,76 @@ export default function App() {
 
   const handleCreateSchedule = async () => {
     const errors: {
+      acknowledgeRows?: string;
       termStartDate?: string;
       numWeeks?: string;
-      lasareDate?: string;
-      general?: string;
+      recollections?: Record<string, string>;
     } = {};
 
     if (!termStartDate) {
       errors.termStartDate = "Term start date is required.";
     }
 
+    const weekCount = Number(numWeeks);
     if (!numWeeks.trim()) {
       errors.numWeeks = "Number of weeks is required.";
+    } else if (!Number.isInteger(weekCount) || weekCount < 1 || weekCount > 52) {
+      errors.numWeeks = "Enter a whole number of weeks between 1 and 52.";
     }
 
-    if (hasLasallianRecollection && !lasareDate) {
-      errors.lasareDate = "Recollection date is required when your EAF includes a Lasallian Recollection.";
-    }
+    // Validate each recollection against its own weekday. Checking the selected
+    // date against every recollection's weekdays at once lets a date that suits
+    // one recollection pass for another, which the server then rejects.
+    const recollectionErrors: Record<string, string> = {};
+    recollectionFields.forEach((field) => {
+      const selected = recollectionDates[field.code] ?? "";
 
-    if (hasLasallianRecollection && lasareDate) {
-      const selectedWeekday = getSelectedWeekday(lasareDate);
-      if (selectedWeekday && recollectionWeekdays.length > 0 && !recollectionWeekdays.includes(selectedWeekday)) {
-        errors.lasareDate = "Selected recollection date does not match your LASARE weekday.";
+      if (!selected) {
+        recollectionErrors[field.code] = "Choose the date for this recollection.";
+        return;
       }
+
+      const selectedWeekday = getSelectedWeekday(selected);
+      if (selectedWeekday && field.days.length > 0 && !field.days.includes(selectedWeekday)) {
+        recollectionErrors[field.code] =
+          `${field.code} is scheduled on ${formatWeekdayList(field.days)}. Choose a ${formatWeekdayList(field.days)} date.`;
+      }
+    });
+
+    if (Object.keys(recollectionErrors).length > 0) {
+      errors.recollections = recollectionErrors;
+    }
+
+    if (ambiguousRows.length > 0 && !acknowledgedMissingRows) {
+      errors.acknowledgeRows =
+        "Confirm you understand these classes will be missing before creating the schedule.";
     }
 
     if (Object.keys(errors).length > 0) {
       setValidationErrors(errors);
+      setSubmitError(null);
+      setStatusMessage("Some details still need fixing before your calendar can be created.");
       return;
     }
 
     setValidationErrors({});
+    setSubmitError(null);
 
     if (!file) {
-      setValidationErrors({ general: "Upload your EAF PDF before creating a schedule." });
+      setSubmitError({ kind: "server", message: "Upload your EAF PDF before creating a schedule." });
       return;
     }
 
-    const recollectionCodes = Array.from(
-      new Set(inspectedEvents.filter((event) => event.is_recollection).map((event) => event.code)),
-    );
     const formData = new FormData();
     formData.append("eaf_pdf", file);
     formData.append("term_start", termStartDate);
     formData.append("weeks", numWeeks);
-    recollectionCodes.forEach((code) => {
-      formData.append(`recollection_date_${code}`, lasareDate);
+    recollectionFields.forEach((field) => {
+      formData.append(`recollection_date_${field.code}`, recollectionDates[field.code] ?? "");
     });
 
     setIsGenerating(true);
+    setStatusMessage("Creating your schedule...");
 
     try {
       const response = await fetch("/generate", {
@@ -360,19 +564,26 @@ export default function App() {
         },
         body: formData,
       });
-      const payload = await response.json();
 
       if (!response.ok) {
-        setValidationErrors({ general: payload.error || "Could not create the calendar file." });
+        const { message } = await readErrorMessage(response, "Could not create the calendar file.");
+        setSubmitError({ kind: "server", message });
+        setStatusMessage(message);
         return;
       }
 
+      const payload = await response.json();
       setDownloadUrl(payload.download_url || "");
       setGeneratedFilename(payload.generated_filename || generatedFilename);
       setGeneratedAt(payload.generated_at || "");
       setIsScheduleCreated(true);
+      setStatusMessage("Your calendar file is ready to download.");
     } catch {
-      setValidationErrors({ general: "Could not connect to the app server." });
+      setSubmitError({
+        kind: "transport",
+        message: "Could not reach the app server. Your details are still here - try again.",
+      });
+      setStatusMessage("Could not reach the app server.");
     } finally {
       setIsGenerating(false);
     }
@@ -380,7 +591,10 @@ export default function App() {
 
   const handleDownload = () => {
     if (!downloadUrl) {
-      setValidationErrors({ general: "The calendar file is not ready yet. Please create the schedule again." });
+      setSubmitError({
+        kind: "server",
+        message: "The calendar file is not ready yet. Create the schedule again.",
+      });
       setIsScheduleCreated(false);
       return;
     }
@@ -392,6 +606,36 @@ export default function App() {
     () => buildCourseSummaries(inspectedEvents),
     [inspectedEvents],
   );
+  const ambiguousRowGroups = useMemo<AmbiguousRowGroup[]>(() => {
+    const grouped = new Map<string, AmbiguousRow[]>();
+    ambiguousRows.forEach((row) => {
+      const existing = grouped.get(row.code);
+      if (existing) {
+        existing.push(row);
+      } else {
+        grouped.set(row.code, [row]);
+      }
+    });
+    return Array.from(grouped.entries()).map(([code, rows]) => ({ code, rows }));
+  }, [ambiguousRows]);
+
+  const handleCopyReport = async () => {
+    const report = [
+      "EAF Schedulr - rows that could not be read",
+      "",
+      ...ambiguousRows.map(
+        (row) => `[${row.code}] row ${row.row_number}: ${row.text}\n  reason: ${row.reason}`,
+      ),
+    ].join("\n");
+    try {
+      await navigator.clipboard.writeText(report);
+      setReportCopied(true);
+      setTimeout(() => setReportCopied(false), 2000);
+    } catch {
+      setReportCopied(false);
+    }
+  };
+
   const uniqueCourseCount = new Set(inspectedEvents.map((event) => event.code)).size;
   const coursePreview = showAllCourses ? courseSummaries : courseSummaries.slice(0, 4);
   const hasMoreCourses = courseSummaries.length > 4;
@@ -400,8 +644,14 @@ export default function App() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-emerald-50 via-white to-teal-50 dark:from-slate-950 dark:via-slate-900 dark:to-emerald-950/40 relative overflow-hidden transition-colors duration-300">
       {/* Decorative background elements */}
-      <div className="absolute top-0 right-0 w-96 h-96 bg-emerald-200 dark:bg-emerald-500/20 rounded-full mix-blend-multiply dark:mix-blend-screen filter blur-3xl opacity-20 dark:opacity-30 animate-pulse"></div>
-      <div className="absolute bottom-0 left-0 w-96 h-96 bg-teal-200 dark:bg-teal-500/20 rounded-full mix-blend-multiply dark:mix-blend-screen filter blur-3xl opacity-20 dark:opacity-30 animate-pulse animation-delay-2000"></div>
+      <div className="absolute top-0 right-0 w-96 h-96 bg-emerald-200 dark:bg-emerald-500/20 rounded-full mix-blend-multiply dark:mix-blend-screen filter blur-3xl opacity-20 dark:opacity-30"></div>
+      <div className="absolute bottom-0 left-0 w-96 h-96 bg-teal-200 dark:bg-teal-500/20 rounded-full mix-blend-multiply dark:mix-blend-screen filter blur-3xl opacity-20 dark:opacity-30"></div>
+
+      {/* Parsing, validation and generation all happen without a page change,
+          so screen readers need them narrated. */}
+      <div aria-live="polite" aria-atomic="true" className="sr-only">
+        {statusMessage}
+      </div>
 
       <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 sm:py-16 lg:py-20">
         {/* Brand & Theme Toggle */}
@@ -434,10 +684,7 @@ export default function App() {
           <div className="mx-auto flex w-full max-w-3xl flex-col items-center space-y-8 text-center lg:items-start lg:text-left self-center">
             <div className="space-y-5">
               <div className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-50 dark:bg-emerald-500/15 border border-emerald-200 dark:border-emerald-500/40 rounded-full backdrop-blur-sm">
-                <span className="relative flex h-2 w-2">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 dark:bg-emerald-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500 dark:bg-emerald-400"></span>
-                </span>
+                <span className="inline-flex h-2 w-2 rounded-full bg-emerald-500 dark:bg-emerald-400"></span>
                 <span className="text-sm text-emerald-700 dark:text-emerald-300">Built for DLSU students</span>
               </div>
 
@@ -445,7 +692,7 @@ export default function App() {
                 Turn your EAF into your class schedule <span className="text-emerald-600 dark:text-emerald-400">instantly.</span>
               </h1>
 
-              <p className="text-lg sm:text-2xl text-gray-600 dark:text-gray-400 leading-relaxed">
+              <p className="text-lg sm:text-2xl text-muted-foreground leading-relaxed">
                 Upload your EAF and get a ready-to-use Google Calendar in seconds.
               </p>
             </div>
@@ -453,7 +700,7 @@ export default function App() {
             <div className="flex flex-col sm:flex-row gap-3 justify-center lg:justify-start">
               <button
                 onClick={scrollToUpload}
-                className="group px-8 py-4 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-2xl transition-all duration-300 shadow-lg shadow-emerald-500/30 hover:shadow-xl hover:shadow-emerald-500/40 hover:-translate-y-0.5 flex items-center justify-center gap-2"
+                className="group px-8 py-4 bg-gradient-to-r from-emerald-700 to-teal-700 hover:from-emerald-800 hover:to-teal-800 text-white rounded-2xl transition-all duration-300 shadow-lg shadow-emerald-700/30 hover:shadow-xl hover:shadow-emerald-700/40 hover:-translate-y-0.5 flex items-center justify-center gap-2"
               >
                 Create my schedule
                 <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
@@ -468,53 +715,53 @@ export default function App() {
           </div>
 
           {/* Workflow Card - Glass morphism */}
-          <div className="w-full max-w-lg justify-self-center lg:justify-self-end lg:mt-4 bg-white/60 dark:bg-slate-800/60 backdrop-blur-xl rounded-3xl shadow-2xl shadow-emerald-500/10 dark:shadow-emerald-500/20 p-8 border border-white/50 dark:border-emerald-500/20">
+          <GlassCard shadow="2xl" className="w-full max-w-lg justify-self-center p-8 lg:mt-4 lg:justify-self-end">
             <div className="flex items-center gap-2 mb-6">
               <div className="w-1 h-6 bg-gradient-to-b from-emerald-600 to-teal-600 dark:from-emerald-400 dark:to-teal-400 rounded-full shadow-lg dark:shadow-emerald-400/50"></div>
-              <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100">How it works</h2>
+              <h2 className="text-xl font-semibold text-foreground">How it works</h2>
             </div>
 
             <div className="space-y-4">
               <div className="group flex items-start gap-4 p-4 rounded-2xl hover:bg-white/80 dark:hover:bg-slate-700/40 transition-all duration-300">
-                <div className="flex-shrink-0 w-12 h-12 bg-gradient-to-br from-emerald-500 to-emerald-600 dark:from-emerald-400 dark:to-emerald-500 rounded-2xl flex items-center justify-center shadow-lg shadow-emerald-500/30 dark:shadow-emerald-400/20 group-hover:scale-110 transition-transform duration-300">
-                  <span className="text-white text-lg">1</span>
-                </div>
+                <IconTile tone="emerald" className="transition-transform duration-300 group-hover:scale-110">
+                  <span className="text-lg">1</span>
+                </IconTile>
                 <div className="pt-0.5">
-                  <h3 className="text-gray-900 dark:text-gray-100 mb-1.5">Upload</h3>
-                  <p className="text-gray-600 dark:text-gray-400 text-base leading-relaxed">Upload your latest Archers Hub EAF PDF.</p>
+                  <h3 className="text-foreground mb-1.5">Upload</h3>
+                  <p className="text-muted-foreground text-base leading-relaxed">Upload your latest Archers Hub EAF PDF.</p>
                 </div>
               </div>
 
               <div className="group flex items-start gap-4 p-4 rounded-2xl hover:bg-white/80 dark:hover:bg-slate-700/40 transition-all duration-300">
-                <div className="flex-shrink-0 w-12 h-12 bg-gradient-to-br from-teal-500 to-teal-600 dark:from-teal-400 dark:to-teal-500 rounded-2xl flex items-center justify-center shadow-lg shadow-teal-500/30 dark:shadow-teal-400/20 group-hover:scale-110 transition-transform duration-300">
-                  <span className="text-white text-lg">2</span>
-                </div>
+                <IconTile tone="teal" className="transition-transform duration-300 group-hover:scale-110">
+                  <span className="text-lg">2</span>
+                </IconTile>
                 <div className="pt-0.5">
-                  <h3 className="text-gray-900 dark:text-gray-100 mb-1.5">Review</h3>
-                  <p className="text-gray-600 dark:text-gray-400 text-base leading-relaxed">Adjust schedule details and generate a ready-to-import .ics calendar file.</p>
+                  <h3 className="text-foreground mb-1.5">Review</h3>
+                  <p className="text-muted-foreground text-base leading-relaxed">Adjust schedule details and generate a ready-to-import .ics calendar file.</p>
                 </div>
               </div>
 
               <div className="group flex items-start gap-4 p-4 rounded-2xl hover:bg-white/80 dark:hover:bg-slate-700/40 transition-all duration-300">
-                <div className="flex-shrink-0 w-12 h-12 bg-gradient-to-br from-emerald-500 to-teal-600 dark:from-emerald-400 dark:to-teal-500 rounded-2xl flex items-center justify-center shadow-lg shadow-emerald-500/30 dark:shadow-emerald-400/20 group-hover:scale-110 transition-transform duration-300">
-                  <span className="text-white text-lg">3</span>
-                </div>
+                <IconTile tone="brand" className="shadow-emerald-700/30 dark:shadow-emerald-400/30 transition-transform duration-300 group-hover:scale-110">
+                  <span className="text-lg">3</span>
+                </IconTile>
                 <div className="pt-0.5">
-                  <h3 className="text-gray-900 dark:text-gray-100 mb-1.5">Import</h3>
-                  <p className="text-gray-600 dark:text-gray-400 text-base leading-relaxed">Import your schedule into Google Calendar securely. Files are processed in memory only.</p>
+                  <h3 className="text-foreground mb-1.5">Import</h3>
+                  <p className="text-muted-foreground text-base leading-relaxed">Import your schedule into Google Calendar securely. Files are processed in memory only.</p>
                 </div>
               </div>
             </div>
-          </div>
+          </GlassCard>
         </div>
 
         {/* Upload Section - Glass morphism */}
-        <div ref={uploadSectionRef} className="-mt-10 lg:-mt-14 bg-white/60 dark:bg-slate-800/60 backdrop-blur-xl rounded-3xl shadow-xl shadow-emerald-500/10 dark:shadow-emerald-500/20 p-6 sm:p-8 mb-6 border border-white/50 dark:border-emerald-500/20">
+        <GlassCard ref={uploadSectionRef} className="-mt-10 mb-6 p-6 sm:p-8 lg:-mt-14">
           <div className="flex items-center gap-3 mb-6">
-            <div className="w-10 h-10 bg-gradient-to-br from-emerald-500 to-teal-600 dark:from-emerald-400 dark:to-teal-500 rounded-xl flex items-center justify-center shadow-lg dark:shadow-emerald-400/30">
-              <FileText className="w-5 h-5 text-white" />
-            </div>
-            <h2 className="text-2xl text-gray-900 dark:text-gray-100">Upload your EAF</h2>
+            <IconTile tone="brand" size="sm">
+              <FileText className="w-5 h-5" />
+            </IconTile>
+            <h2 className="text-2xl text-foreground">Upload your EAF</h2>
           </div>
 
           <div
@@ -543,29 +790,40 @@ export default function App() {
               id="file-upload"
             />
             <label htmlFor="file-upload" className="cursor-pointer block relative z-10">
+              {/* The one tile that is not an <IconTile>, because its fill is a
+                  three-way state - waiting, hovered, holding a file - rather
+                  than a tone. It still owes the tile system its values: left on
+                  the old emerald-500 it drifted a full step lighter than every
+                  other tile the moment those were corrected, and its icon sat
+                  at 2.1:1. Fill and foreground move together here for the same
+                  reason they do in IconTile's TONES. */}
               <div className={`w-20 h-20 mx-auto mb-6 rounded-3xl bg-gradient-to-br flex items-center justify-center transition-all duration-300 ${
                 file
-                  ? "from-emerald-500 to-teal-600 dark:from-emerald-400 dark:to-teal-500 shadow-xl shadow-emerald-500/40 dark:shadow-emerald-400/30 scale-110"
-                  : "from-gray-400 to-gray-500 dark:from-slate-600 dark:to-slate-700 group-hover:from-emerald-500 group-hover:to-teal-600 dark:group-hover:from-emerald-400 dark:group-hover:to-teal-500 group-hover:shadow-lg group-hover:shadow-emerald-500/30 dark:group-hover:shadow-emerald-400/20 group-hover:scale-105"
+                  ? "from-emerald-700 to-teal-800 text-white dark:from-emerald-400 dark:to-teal-500 dark:text-slate-900 shadow-xl shadow-emerald-700/40 dark:shadow-emerald-400/30 scale-110"
+                  : "from-gray-500 to-gray-600 text-white dark:from-slate-600 dark:to-slate-700 group-hover:from-emerald-700 group-hover:to-teal-800 dark:group-hover:from-emerald-400 dark:group-hover:to-teal-500 dark:group-hover:text-slate-900 group-hover:shadow-lg group-hover:shadow-emerald-700/30 dark:group-hover:shadow-emerald-400/20 group-hover:scale-105"
               }`}>
-                <Upload className={`w-10 h-10 text-white transition-transform duration-300 ${file ? '' : 'group-hover:-translate-y-1'}`} />
+                <Upload className={`w-10 h-10 transition-transform duration-300 ${file ? '' : 'group-hover:-translate-y-1'}`} />
               </div>
 
               {file ? (
                 <div className="space-y-3">
-                  <div className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-100 dark:bg-emerald-500/20 rounded-full border border-emerald-200 dark:border-emerald-500/30">
+                  <div className={`inline-flex items-center gap-2 px-4 py-2 bg-emerald-100 dark:bg-emerald-500/20 rounded-full border border-emerald-200 dark:border-emerald-500/30 ${isInspecting ? "animate-pulse" : ""}`}>
                     <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-                    <span className="text-sm text-emerald-700 dark:text-emerald-300">File uploaded</span>
+                    <span className="text-sm text-emerald-700 dark:text-emerald-300">
+                      {isInspecting ? "Reading your EAF" : "File uploaded"}
+                    </span>
                   </div>
-                  <p className="text-xl text-gray-900 dark:text-gray-100 break-all px-4">{file.name}</p>
-                  <p className="text-sm text-gray-600 dark:text-gray-400">Ready to process • {(file.size / 1024 / 1024).toFixed(2)} MB</p>
+                  <p className="text-xl text-foreground break-all px-4">{file.name}</p>
+                  <p className="text-sm text-muted-foreground">
+                    {isInspecting ? "Looking for your schedule" : "Ready to process"} • {(file.size / 1024 / 1024).toFixed(2)} MB
+                  </p>
                 </div>
               ) : (
                 <div className="space-y-3">
                   <p className="text-xl sm:text-2xl text-gray-800 dark:text-gray-100">Drag and drop your EAF PDF here</p>
-                  <p className="text-sm sm:text-base text-gray-500 dark:text-gray-400">or click to browse your files</p>
+                  <p className="text-sm sm:text-base text-subtle-foreground">or click to browse your files</p>
                   <div className="pt-2">
-                    <span className="inline-flex items-center gap-2 px-4 py-2 bg-white/80 dark:bg-gray-700/50 rounded-full text-xs text-gray-500 dark:text-gray-400 dark:text-gray-400 border border-gray-200 dark:border-gray-600">
+                    <span className="inline-flex items-center gap-2 px-4 py-2 bg-white/80 dark:bg-gray-700/50 rounded-full text-xs text-subtle-foreground dark:text-gray-400 border border-gray-200 dark:border-gray-600">
                       <FileText className="w-3.5 h-3.5" />
                       PDF only, up to 10MB
                     </span>
@@ -574,164 +832,185 @@ export default function App() {
               )}
             </label>
           </div>
-        </div>
+        </GlassCard>
         
-        {/* {validationErrors.general && (
-          <div className="mb-8 rounded-2xl border border-red-200 bg-red-50/90 px-5 py-4 text-red-700 shadow-sm dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300">
-            <div className="flex items-start gap-3">
-              <AlertCircle className="mt-0.5 h-5 w-5 flex-shrink-0" />
-              <p className="text-sm leading-relaxed">{validationErrors.general}</p>
-            </div>
-          </div>
-        )} */}
-
-
-        {/* Form Section - Glass morphism - Only shows when file is uploaded and schedule not created */}
-        {file && !isScheduleCreated && validationErrors.general && (
-          <div className="bg-rose-50/90 dark:bg-rose-500/10 backdrop-blur-xl rounded-3xl shadow-xl shadow-rose-500/10 p-6 sm:p-8 mb-12 border border-rose-200/60 dark:border-rose-500/30">
-            <div className="flex items-start gap-4">
-              <div className="relative flex-shrink-0">
-                <div className="w-12 h-12 bg-gradient-to-br from-rose-500 to-red-600 rounded-2xl flex items-center justify-center shadow-lg shadow-rose-500/30">
-                  <AlertCircle className="w-6 h-6 text-white" />
-                </div>
-              </div>
-              <div className="flex-1 space-y-5">
-                <div>
-                  <h3 className="text-lg text-rose-900 dark:text-rose-100 mb-2">Parsing blocked</h3>
-                  <p className="text-sm text-rose-800/90 dark:text-rose-100/90 leading-relaxed whitespace-pre-line">
-                    {validationErrors.general}
-                  </p>
-                </div>
-
-                {ambiguousRows.length > 0 && (
-                  <div className="space-y-4">
-                    {ambiguousRows.map((group) => (
-                      <div key={group.code} className="rounded-2xl border border-rose-200/70 dark:border-rose-500/20 bg-white/70 dark:bg-slate-900/30 p-4">
-                        <p className="text-base text-rose-900 dark:text-rose-100 font-semibold mb-3">{group.code}</p>
-                        <div className="space-y-3">
-                          {group.rows.map((row) => (
-                            <div key={`${group.code}-${row.row_number}`} className="rounded-xl bg-rose-50/80 dark:bg-rose-500/10 border border-rose-200/70 dark:border-rose-500/20 p-3">
-                              <p className="text-sm text-rose-900 dark:text-rose-100 font-medium">
-                                Row {row.row_number}
-                              </p>
-                              <p className="mt-1 text-sm text-rose-800 dark:text-rose-100/90 whitespace-pre-wrap leading-relaxed">
-                                {row.text}
-                              </p>
-                              <p className="mt-2 text-xs text-rose-700 dark:text-rose-200/80 leading-relaxed">
-                                {row.reason}
-                              </p>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
+        {/* The file itself is unusable, so the form is replaced until a new upload. */}
+        {parseError && !isScheduleCreated && (
+          <Alert
+            tone="danger"
+            className="mb-12"
+            title={
+              parseError.kind === "transport" ? "Can't reach the server" : "This file can't be read"
+            }
+            message={parseError.message}
+          >
+            <AmbiguousRowList groups={ambiguousRowGroups} tone="danger" />
+          </Alert>
         )}
 
-        {file && !isScheduleCreated && !validationErrors.general && (
+        {file && !isScheduleCreated && !parseError && (
           <>
-            <div ref={scheduleDetailsRef} className="bg-white/60 dark:bg-slate-800/60 backdrop-blur-xl rounded-3xl shadow-xl shadow-emerald-500/10 dark:shadow-emerald-500/20 p-6 sm:p-8 mb-12 border border-white/50 dark:border-emerald-500/20">
-              <h2 className="text-2xl text-gray-900 dark:text-gray-100 mb-8">Schedule details</h2>
+            {ambiguousRowGroups.length > 0 && (
+              <Alert
+                tone="warning"
+                className="mb-12"
+                title={
+                  ambiguousRows.length === 1
+                    ? "1 row could not be read"
+                    : `${ambiguousRows.length} rows could not be read`
+                }
+                message="Everything else parsed fine, and your calendar will be created without these. Add them to Google Calendar yourself, and please send us the report so the reader can be fixed."
+              >
+                    <AmbiguousRowList groups={ambiguousRowGroups} tone="warning" />
+
+                    <div className="flex flex-wrap items-center gap-3">
+                      <button
+                        type="button"
+                        onClick={handleCopyReport}
+                        className="px-4 py-2 rounded-xl text-sm bg-amber-700 text-white hover:bg-amber-800 transition-colors shadow-lg shadow-amber-900/20"
+                      >
+                        {reportCopied ? "Copied to clipboard" : "Copy report"}
+                      </button>
+                      <a
+                        href="https://github.com/Stilsi-dev/EAFSchedulr/issues"
+                        target="_blank"
+                        rel="noreferrer"
+                        className="px-4 py-2 rounded-xl text-sm border border-amber-300 dark:border-amber-500/40 text-amber-900 dark:text-amber-100 hover:bg-amber-100/60 dark:hover:bg-amber-500/10 transition-colors"
+                      >
+                        Report on GitHub
+                      </a>
+                    </div>
+
+                    <label className="flex items-start gap-3 cursor-pointer rounded-xl bg-card-well border border-amber-200/70 dark:border-amber-500/20 p-4">
+                      <input
+                        type="checkbox"
+                        checked={acknowledgedMissingRows}
+                        onChange={(e) => setAcknowledgedMissingRows(e.target.checked)}
+                        aria-invalid={Boolean(validationErrors.acknowledgeRows)}
+                        aria-describedby={validationErrors.acknowledgeRows ? "acknowledge-rows-error" : undefined}
+                        className="mt-0.5 w-4 h-4 accent-amber-600"
+                      />
+                      <span className="text-sm text-amber-900 dark:text-amber-100 leading-relaxed">
+                        I understand these classes will not be in my calendar, and I will add them myself.
+                      </span>
+                    </label>
+
+                    {validationErrors.acknowledgeRows && (
+                      <p id="acknowledge-rows-error" className="flex items-start gap-2 text-sm text-rose-700 dark:text-rose-300">
+                        <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                        <span>{validationErrors.acknowledgeRows}</span>
+                      </p>
+                    )}
+              </Alert>
+            )}
+
+            <GlassCard ref={scheduleDetailsRef} className="mb-12 p-6 sm:p-8">
+              <h2 className="text-2xl text-foreground mb-8">Schedule details</h2>
 
               <div className="grid sm:grid-cols-2 gap-6 mb-8">
-                <div className="space-y-2">
-                  <label htmlFor="start-date" className="block text-gray-700 dark:text-gray-300 pl-1">
-                    Term start date <span className="text-rose-500">*</span>
-                  </label>
-                  <input
-                    type="date"
-                    id="start-date"
-                    value={termStartDate}
-                    onChange={(e) => setTermStartDate(e.target.value)}
-                    aria-invalid={Boolean(validationErrors.termStartDate)}
-                    className={`w-full px-5 py-3.5 bg-white/70 dark:bg-slate-700/50 border rounded-2xl focus:outline-none focus:ring-2 focus:border-transparent transition-all backdrop-blur-sm hover:bg-white dark:hover:bg-slate-700/70 text-gray-900 dark:text-gray-100 ${
-                      validationErrors.termStartDate
-                        ? "border-red-300 dark:border-red-500/50 focus:ring-red-500 dark:focus:ring-red-400"
-                        : "border-gray-200/50 dark:border-slate-600/50 focus:ring-emerald-500 dark:focus:ring-emerald-400"
-                    }`}
-                  />
-                  {validationErrors.termStartDate && (
-                    <div className="flex items-center gap-2 text-sm text-red-600 dark:text-red-400 mt-2 animate-in fade-in slide-in-from-top-1 duration-200">
-                      <AlertCircle className="w-4 h-4 flex-shrink-0" />
-                      <span>{validationErrors.termStartDate}</span>
-                    </div>
-                  )}
-                </div>
+                <Field
+                  id="start-date"
+                  type="date"
+                  label="Term start date"
+                  required
+                  value={termStartDate}
+                  onChange={setTermStartDate}
+                  error={validationErrors.termStartDate}
+                />
 
-                <div className="space-y-2">
-                  <label htmlFor="num-weeks" className="block text-gray-700 dark:text-gray-300 pl-1">
-                    Number of weeks <span className="text-rose-500">*</span>
-                  </label>
-                  <input
-                    type="number"
-                    id="num-weeks"
-                    placeholder="14"
-                    value={numWeeks}
-                    onChange={(e) => setNumWeeks(e.target.value)}
-                    aria-invalid={Boolean(validationErrors.numWeeks)}
-                    className={`w-full px-5 py-3.5 bg-white/70 dark:bg-slate-700/50 border rounded-2xl focus:outline-none focus:ring-2 focus:border-transparent transition-all backdrop-blur-sm hover:bg-white dark:hover:bg-slate-700/70 placeholder:text-gray-400 dark:placeholder:text-gray-500 text-gray-900 dark:text-gray-100 ${
-                      validationErrors.numWeeks
-                        ? "border-red-300 dark:border-red-500/50 focus:ring-red-500 dark:focus:ring-red-400"
-                        : "border-gray-200/50 dark:border-slate-600/50 focus:ring-emerald-500 dark:focus:ring-emerald-400"
-                    }`}
-                  />
-                  {validationErrors.numWeeks && (
-                    <div className="flex items-center gap-2 text-sm text-red-600 dark:text-red-400 mt-2 animate-in fade-in slide-in-from-top-1 duration-200">
-                      <AlertCircle className="w-4 h-4 flex-shrink-0" />
-                      <span>{validationErrors.numWeeks}</span>
-                    </div>
-                  )}
-                </div>
+                <Field
+                  id="num-weeks"
+                  type="number"
+                  label="Number of weeks"
+                  required
+                  placeholder="14"
+                  value={numWeeks}
+                  onChange={setNumWeeks}
+                  min={1}
+                  max={52}
+                  step={1}
+                  inputMode="numeric"
+                  hint="A DLSU term is usually 14 weeks."
+                  error={validationErrors.numWeeks}
+                />
               </div>
 
               {hasLasallianRecollection && (
                 <div className="border-t border-gray-200/50 dark:border-slate-600/30 pt-8">
                   <div className="space-y-2 mb-6">
-                    <h3 className="text-lg text-gray-900 dark:text-gray-100">Lasallian Recollection</h3>
-                    <p className="text-sm text-gray-600 dark:text-gray-400">If your EAF includes LASARE (LASALLIAN RECOLLECTION) 1, 2, or 3, select the exact date.</p>
+                    <h3 className="text-lg text-foreground">
+                      {recollectionFields.length === 1 ? "Lasallian Recollection" : "Lasallian Recollections"}
+                    </h3>
+                    <p className="text-sm text-muted-foreground">
+                      {recollectionFields.length === 1
+                        ? "Your EAF includes one recollection. Pick the exact date it takes place."
+                        : `Your EAF includes ${recollectionFields.length} recollections. Pick the exact date for each one - they can fall on different days.`}
+                    </p>
                   </div>
 
                   <div className="grid sm:grid-cols-2 gap-6">
-                    <div className="space-y-2">
-                      <label htmlFor="lasare-date" className="block text-gray-700 dark:text-gray-300 pl-1">
-                          Recollection date <span className="text-rose-500">*</span>
-                      </label>
-                      <input
-                        type="date"
-                        id="lasare-date"
-                        value={lasareDate}
-                        onChange={(e) => setLasareDate(e.target.value)}
-                        required
-                        aria-invalid={Boolean(validationErrors.lasareDate)}
-                        className={`w-full px-5 py-3.5 bg-white/70 dark:bg-slate-700/50 border rounded-2xl focus:outline-none focus:ring-2 focus:border-transparent transition-all backdrop-blur-sm hover:bg-white dark:hover:bg-slate-700/70 text-gray-900 dark:text-gray-100 ${
-                          validationErrors.lasareDate
-                            ? "border-red-300 dark:border-red-500/50 focus:ring-red-500 dark:focus:ring-red-400"
-                            : "border-gray-200/50 dark:border-slate-600/50 focus:ring-emerald-500 dark:focus:ring-emerald-400"
-                        }`}
-                      />
-                      {/* Date preview intentionally hidden here; shown only on recollection course cards */}
-                      {validationErrors.lasareDate && (
-                        <div className="flex items-center gap-2 text-sm text-red-600 dark:text-red-400 mt-2 animate-in fade-in slide-in-from-top-1 duration-200">
-                          <AlertCircle className="w-4 h-4 flex-shrink-0" />
-                          <span>{validationErrors.lasareDate}</span>
-                        </div>
-                      )}
-                    </div>
+                    {recollectionFields.map((field) => {
+                      const fieldId = `recollection-date-${field.code}`;
+                      const fieldError = validationErrors.recollections?.[field.code];
+                      const weekdayHint = formatWeekdayList(field.days);
+
+                      return (
+                        <Field
+                          key={field.code}
+                          id={fieldId}
+                          type="date"
+                          label={formatCourseName(field.name)}
+                          required
+                          value={recollectionDates[field.code] ?? ""}
+                          onChange={(value) =>
+                            setRecollectionDates((current) => ({
+                              ...current,
+                              [field.code]: value,
+                            }))
+                          }
+                          /* The weekday is stated up front so the date picker is a
+                             confirmation rather than a guess the server rejects. */
+                          hint={weekdayHint ? `${field.code} falls on a ${weekdayHint}.` : undefined}
+                          error={fieldError}
+                        />
+                      );
+                    })}
                   </div>
                 </div>
               )}
-            </div>
+            </GlassCard>
+
+            {/* Creating the calendar failed. The form above keeps every value the
+                student entered, so recovery is one button rather than a re-upload. */}
+            {submitError && (
+              <Alert
+                tone="danger"
+                variant="inline"
+                className="mb-6"
+                title={
+                  submitError.kind === "transport"
+                    ? "Couldn't reach the server"
+                    : "Couldn't create your calendar"
+                }
+                message={submitError.message}
+              >
+                <button
+                  type="button"
+                  onClick={handleCreateSchedule}
+                  disabled={isGenerating}
+                  className="rounded-xl border border-rose-300 px-5 py-3 text-sm text-rose-900 transition-colors hover:bg-rose-100/60 disabled:cursor-wait disabled:opacity-70 dark:border-rose-500/40 dark:text-rose-100 dark:hover:bg-rose-500/10"
+                >
+                  {isGenerating ? "Trying again..." : "Try again"}
+                </button>
+              </Alert>
+            )}
 
             {/* CTA Area */}
             <div className="flex flex-col sm:flex-row gap-4 justify-center items-center pt-4">
               <button
                 onClick={handleCreateSchedule}
                 disabled={isGenerating}
-                className="group px-10 py-4 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 disabled:from-emerald-400 disabled:to-teal-400 disabled:cursor-wait text-white rounded-2xl transition-all duration-300 shadow-xl shadow-emerald-500/30 hover:shadow-2xl hover:shadow-emerald-500/40 hover:-translate-y-1 disabled:hover:translate-y-0 flex items-center gap-3"
+                className="group px-10 py-4 bg-gradient-to-r from-emerald-700 to-teal-700 hover:from-emerald-800 hover:to-teal-800 disabled:from-emerald-600 disabled:to-teal-600 disabled:cursor-wait text-white rounded-2xl transition-all duration-300 shadow-xl shadow-emerald-700/30 hover:shadow-2xl hover:shadow-emerald-700/40 hover:-translate-y-1 disabled:hover:translate-y-0 flex items-center gap-3"
               >
                 <Calendar className="w-5 h-5" />
                 {isGenerating ? "Creating schedule..." : "Create my schedule"}
@@ -750,10 +1029,10 @@ export default function App() {
         {isScheduleCreated && (
           <div ref={successSectionRef} className="relative pb-8">
             {/* Decorative elements */}
-            <div className="absolute -top-20 left-1/2 -translate-x-1/2 w-40 h-40 bg-emerald-300 rounded-full mix-blend-multiply filter blur-3xl opacity-30 animate-pulse"></div>
+            <div className="absolute -top-20 left-1/2 -translate-x-1/2 w-40 h-40 bg-emerald-300 rounded-full mix-blend-multiply filter blur-3xl opacity-30"></div>
 
             {/* Success Header Card */}
-            <div className="relative mx-auto max-w-4xl bg-gradient-to-br from-emerald-500 via-emerald-600 to-teal-600 rounded-[2rem] shadow-2xl shadow-emerald-500/30 p-6 sm:p-8 lg:p-10 mb-6 overflow-hidden">
+            <div className="relative mx-auto max-w-4xl bg-gradient-to-br from-emerald-700 via-emerald-800 to-teal-800 rounded-[2rem] shadow-2xl shadow-emerald-900/40 p-6 sm:p-8 lg:p-10 mb-6 overflow-hidden">
               {/* Decorative circles */}
               <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full blur-3xl"></div>
               <div className="absolute bottom-0 left-0 w-48 h-48 bg-teal-400/20 rounded-full blur-2xl"></div>
@@ -761,8 +1040,8 @@ export default function App() {
               <div className="relative z-10">
                 <div className="mx-auto flex w-full max-w-xl flex-col items-center text-center">
                   <div className="relative mb-6">
-                    <div className="absolute inset-0 bg-white rounded-full blur-xl opacity-30 animate-pulse"></div>
-                    <div className="relative w-16 h-16 bg-white rounded-full flex items-center justify-center shadow-xl animate-in zoom-in duration-500">
+                    <div aria-hidden="true" className="seal-bloom absolute inset-0 rounded-full bg-white blur-xl"></div>
+                    <div className="seal relative flex h-16 w-16 items-center justify-center rounded-full bg-white shadow-xl">
                       <CheckCircle2 className="w-8 h-8 text-emerald-600" strokeWidth={2.5} />
                     </div>
                   </div>
@@ -770,28 +1049,28 @@ export default function App() {
                   <h2 className="text-3xl sm:text-4xl text-white mb-3">
                     All set!
                   </h2>
-                  <p className="text-base sm:text-lg text-emerald-50 mb-8">Your calendar file is ready to download.</p>
+                  <p className="text-base sm:text-lg text-emerald-100 mb-8">Your calendar file is ready to download.</p>
 
-                  <div className="w-full rounded-2xl border border-white/25 bg-white/15 p-5 text-left backdrop-blur-sm">
-                    <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-emerald-50/80">Filename</p>
+                  <div className="w-full rounded-2xl border border-emerald-900/40 bg-emerald-950/25 p-5 text-left backdrop-blur-sm">
+                    <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-emerald-100">Filename</p>
                     <p className="break-all font-mono text-sm font-semibold leading-relaxed text-white">
                       {generatedFilename}
                     </p>
-                    <div className="mt-5 flex items-start gap-2 text-xs text-emerald-50/90">
+                    <div className="mt-5 flex items-start gap-2 text-xs text-emerald-100">
                       <CheckCircle2 className="mt-0.5 h-4 w-4 flex-shrink-0" />
-                      <p className="leading-relaxed">
+                      <p className="max-w-[60ch] leading-relaxed">
                         Compatible with Google Calendar, Apple Calendar, Outlook, and other calendar apps
                       </p>
                     </div>
-                    <div className="mt-4 flex items-start gap-2 rounded-xl border border-white/15 bg-white/10 p-3 text-xs text-emerald-50/95">
+                    <div className="mt-4 flex items-start gap-2 rounded-xl border border-emerald-900/30 bg-emerald-950/25 p-3 text-xs text-emerald-100">
                       <Sparkles className="mt-0.5 h-4 w-4 flex-shrink-0" />
-                      <p className="leading-relaxed">
+                      <p className="max-w-[60ch] leading-relaxed">
                         Next step: import this .ics file into Google Calendar to view your complete class timetable.
                       </p>
                     </div>
-                    <div className="mt-4 flex items-center gap-2 text-xs text-emerald-50/80">
+                    <div className="mt-4 flex items-center gap-2 text-xs text-emerald-100">
                       <div className="h-1.5 w-1.5 rounded-full bg-emerald-100"></div>
-                      <span>Generated at {generatedAt || "just now"}</span>
+                      <span className="tabular-nums">Generated at {generatedAt || "just now"}</span>
                     </div>
                   </div>
 
@@ -799,7 +1078,7 @@ export default function App() {
                     onClick={handleDownload}
                     className="group mt-6 flex w-full items-center justify-center gap-3 rounded-2xl bg-white px-8 py-4 text-emerald-700 shadow-xl transition-all duration-300 hover:-translate-y-1 hover:scale-[1.01] hover:bg-gray-50 hover:shadow-2xl sm:max-w-md"
                   >
-                    <Download className="w-5 h-5 group-hover:animate-bounce" />
+                    <Download className="h-5 w-5 transition-transform duration-200 ease-out group-hover:translate-y-0.5" />
                     <span className="text-lg">Download .ics file</span>
                   </button>
                 </div>
@@ -812,7 +1091,7 @@ export default function App() {
                 {false && (
                   <>
                 {/* Filename Card */}
-                <div className="bg-gradient-to-br from-gray-50 to-slate-50/80 dark:from-slate-800/60 dark:to-slate-700/40 backdrop-blur-sm rounded-3xl p-6 sm:p-8 mb-8 border border-gray-200/50 dark:border-slate-600/30 shadow-xl shadow-gray-500/5 dark:shadow-slate-500/10 animate-in fade-in slide-in-from-bottom-8 duration-700">
+                <div className="bg-gradient-to-br from-gray-50 to-slate-50/80 dark:from-slate-800/60 dark:to-slate-700/40 backdrop-blur-sm rounded-3xl p-6 sm:p-8 mb-8 border border-gray-200/50 dark:border-slate-600/30 shadow-xl shadow-gray-500/5 dark:shadow-slate-500/10 animate-in fade-in slide-in-from-bottom-4 duration-400">
                   <div className="flex items-center gap-4 mb-6">
                     <div className="relative">
                       <div className="absolute inset-0 bg-gradient-to-br from-slate-400 to-slate-500 dark:from-slate-500 dark:to-slate-600 rounded-2xl blur-lg opacity-40"></div>
@@ -826,14 +1105,14 @@ export default function App() {
                   </div>
 
                   <div className="space-y-4">
-                    <div className="bg-white/70 dark:bg-slate-700/50 backdrop-blur-sm rounded-2xl p-5 border border-gray-200/30 dark:border-slate-600/30">
-                      <p className="text-xs text-gray-500 dark:text-gray-400 mb-2 uppercase tracking-wide">Filename</p>
-                      <p className="text-base text-gray-900 dark:text-gray-100 break-all font-mono leading-relaxed">
+                    <div className="bg-card-inset backdrop-blur-sm rounded-2xl p-5 border border-gray-200/30 dark:border-slate-600/30">
+                      <p className="text-xs text-subtle-foreground mb-2 uppercase tracking-wide">Filename</p>
+                      <p className="text-base text-foreground break-all font-mono leading-relaxed">
                           {generatedFilename}
                       </p>
                     </div>
 
-                    <div className="flex items-start gap-2 text-xs text-gray-600 dark:text-gray-400 bg-white/50 dark:bg-slate-700/40 rounded-xl p-3 border border-gray-200/30 dark:border-slate-600/30">
+                    <div className="flex items-start gap-2 text-xs text-muted-foreground bg-white/50 dark:bg-slate-700/40 rounded-xl p-3 border border-gray-200/30 dark:border-slate-600/30">
                       <div className="w-1.5 h-1.5 bg-slate-500 dark:bg-slate-400 rounded-full mt-1.5 flex-shrink-0"></div>
                       <p className="leading-relaxed">
                         iCalendar format (.ics) • Compatible with Google Calendar, Apple Calendar, Outlook
@@ -845,20 +1124,20 @@ export default function App() {
                 )}
 
                 {/* Schedule Summary - Consistent Cards */}
-                <div className="space-y-6 mb-10 animate-in fade-in slide-in-from-bottom-10 duration-700">
+                <div className="space-y-6 mb-10 animate-in fade-in slide-in-from-bottom-4 duration-400">
                   {/* Courses Card */}
-                  <div className="bg-gradient-to-br from-blue-50 to-indigo-50/80 dark:from-blue-900/20 dark:to-indigo-900/20 backdrop-blur-sm rounded-3xl p-6 sm:p-8 border border-blue-200/50 dark:border-blue-700/30 shadow-xl shadow-blue-500/5">
+                  <div className="bg-gradient-to-br from-emerald-50 to-emerald-100/70 dark:from-emerald-900/20 dark:to-emerald-800/20 backdrop-blur-sm rounded-3xl p-6 sm:p-8 border border-emerald-200/50 dark:border-emerald-700/30 shadow-xl shadow-emerald-500/5">
                     <div className="w-full flex items-center justify-between gap-4">
                       <div className="flex items-center gap-3">
                         <div className="relative">
-                          <div className="absolute inset-0 bg-gradient-to-br from-blue-400 to-indigo-500 rounded-2xl blur-md opacity-25"></div>
-                          <div className="relative w-16 h-16 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-2xl flex items-center justify-center shadow-lg shadow-blue-500/25">
-                            <BookOpen className="w-8 h-8 text-white" />
-                          </div>
+                          <div className="absolute inset-0 bg-gradient-to-br from-emerald-400 to-emerald-500 rounded-2xl blur-md opacity-25"></div>
+                          <IconTile tone="emerald" size="lg" className="relative">
+                            <BookOpen className="w-8 h-8" />
+                          </IconTile>
                         </div>
                         <div className="text-left">
-                          <p className="text-4xl font-medium leading-none text-gray-900 dark:text-gray-100 mb-0.5">{courseSummaries.length}</p>
-                          <p className="text-base font-medium text-gray-700 dark:text-gray-300">Courses</p>
+                          <p className="text-4xl font-medium leading-none text-foreground mb-0.5 tabular-nums">{courseSummaries.length}</p>
+                          <p className="text-base font-medium text-label-foreground">Courses</p>
                         </div>
                       </div>
                     </div>
@@ -870,17 +1149,17 @@ export default function App() {
                           return (
                             <div
                               key={course.code}
-                              className="flex h-full min-h-[150px] flex-col rounded-3xl border border-blue-200/40 bg-white/85 p-4 shadow-lg shadow-blue-500/5 backdrop-blur-sm transition-all duration-200 hover:-translate-y-1 hover:bg-white hover:shadow-xl hover:shadow-blue-500/10 dark:border-blue-500/20 dark:bg-slate-700/40 dark:hover:bg-slate-700/60"
+                              className="flex h-full min-h-[150px] flex-col rounded-3xl border border-emerald-200/40 bg-white/85 p-4 shadow-lg shadow-emerald-500/5 backdrop-blur-sm transition-all duration-200 hover:-translate-y-1 hover:bg-white hover:shadow-xl hover:shadow-emerald-500/10 dark:border-emerald-500/20 dark:bg-slate-700/40 dark:hover:bg-slate-700/60"
                             >
                               {/* Header */}
                               <div className="flex items-center justify-between gap-3">
                                 {/* Course Code */}
-                                <span className="inline-flex min-w-0 items-center rounded-full bg-blue-500/10 px-2.5 py-1 text-sm font-semibold tracking-wide text-blue-700 dark:bg-blue-400/15 dark:text-blue-200">
+                                <span className="inline-flex min-w-0 items-center rounded-full bg-emerald-500/10 px-2.5 py-1 text-sm font-semibold tracking-wide text-emerald-700 dark:bg-emerald-400/15 dark:text-emerald-200">
                                   {course.code}
                                 </span>
 
                                 {/* Section Code */}
-                                <span className="flex-shrink-0 rounded-full px-1 text-xs font-semibold text-gray-500 dark:text-gray-400">
+                                <span className="flex-shrink-0 rounded-full px-1 text-xs font-semibold text-subtle-foreground">
                                   {course.sectionCode}
                                 </span>
                               </div>
@@ -888,7 +1167,7 @@ export default function App() {
                               {/* Course Name */}
                               <p
                                 title={displayCourseName}
-                                className="mt-3 w-full text-sm font-semibold leading-snug text-gray-950 dark:text-gray-100"
+                                className="mt-3 w-full text-sm font-semibold leading-snug text-strong-foreground"
                                 style={{
                                   display: "-webkit-box",
                                   WebkitBoxOrient: "vertical",
@@ -902,12 +1181,12 @@ export default function App() {
                               <div className="mt-2 flex items-center justify-between gap-2 rounded-2xl bg-slate-50/80 px-3 py-2 text-[13px] text-gray-500 dark:bg-slate-900/30 dark:text-gray-400">
                                 <span className="inline-flex items-center gap-1.5">
                                   <Calendar className="h-3 w-3 opacity-60" />
-                                  <span className="leading-none">{course.hasRecollection && hasLasallianRecollection && lasareDate ? "One-time date" : "Recurring weekly"}</span>
+                                  <span className="leading-none">{course.hasRecollection && recollectionDates[course.code] ? "One-time date" : "Recurring weekly"}</span>
                                 </span>
-                                {course.hasRecollection && hasLasallianRecollection && lasareDate ? (
-                                  <DatePill date={lasareDate} />
+                                {course.hasRecollection && recollectionDates[course.code] ? (
+                                  <DatePill date={recollectionDates[course.code]} />
                                 ) : (
-                                  <span className="text-gray-400 dark:text-gray-500">Weekly</span>
+                                  <span className="text-subtle-foreground">Weekly</span>
                                 )}
                               </div>
 
@@ -927,15 +1206,15 @@ export default function App() {
                                             key={`${course.code}-${meetingGroup.startTime}-${day}`}
                                             className="grid grid-cols-[2.5rem_minmax(7.5rem,1fr)_3.25rem] items-baseline gap-2"
                                           >
-                                            <span className="text-sm font-semibold text-gray-700 dark:text-gray-300">
+                                            <span className="text-sm font-semibold text-label-foreground">
                                               {day}
                                             </span>
 
-                                            <span className="whitespace-nowrap text-sm text-gray-600 dark:text-gray-400">
+                                            <span className="whitespace-nowrap text-sm text-muted-foreground tabular-nums">
                                               {meetingGroup.startTime} - {meetingGroup.endTime}
                                             </span>
 
-                                            <span className="truncate text-right text-sm text-gray-500 dark:text-gray-400">
+                                            <span className="truncate text-right text-sm text-subtle-foreground">
                                               {perDayLocation
                                                 ? meetingGroup.locations[idx]
                                                 : meetingGroup.locations.length > 0
@@ -965,7 +1244,7 @@ export default function App() {
                                 : `View ${remainingCourses} more courses`
                             }
                           >
-                            <div className="flex items-center justify-center gap-2 rounded-2xl border border-blue-200/40 bg-blue-50/80 px-4 py-3 text-blue-700 shadow-sm transition-colors hover:bg-blue-100/80 dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-200 dark:hover:bg-blue-500/20">
+                            <div className="flex items-center justify-center gap-2 rounded-2xl border border-emerald-200/40 bg-emerald-50/80 px-4 py-3 text-emerald-700 shadow-sm transition-colors hover:bg-emerald-100/80 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-200 dark:hover:bg-emerald-500/20">
                               <ArrowRight
                                 className={`h-4 w-4 transition-transform duration-300 ${
                                   showAllCourses ? "rotate-180" : ""
@@ -983,19 +1262,19 @@ export default function App() {
                   </div>
 
                   {/* Calendar Events Card */}
-                  <div className="bg-gradient-to-br from-purple-50 to-violet-50/80 dark:from-purple-900/20 dark:to-violet-900/20 backdrop-blur-sm rounded-3xl p-6 sm:p-8 border border-purple-200/50 dark:border-purple-700/30 shadow-xl shadow-purple-500/5">
+                  <div className="bg-gradient-to-br from-teal-50 to-teal-100/70 dark:from-teal-900/20 dark:to-teal-800/20 backdrop-blur-sm rounded-3xl p-6 sm:p-8 border border-teal-200/50 dark:border-teal-700/30 shadow-xl shadow-teal-500/5">
                     <div className="w-full flex items-center justify-between gap-4">
                       <div className="flex items-center gap-3">
                         <div className="relative">
-                          <div className="absolute inset-0 bg-gradient-to-br from-purple-400 to-violet-500 rounded-2xl blur-md opacity-25"></div>
-                          <div className="relative w-16 h-16 bg-gradient-to-br from-purple-500 to-violet-600 rounded-2xl flex items-center justify-center shadow-lg shadow-purple-500/25">
-                            <CalendarDays className="w-8 h-8 text-white" />
-                          </div>
+                          <div className="absolute inset-0 bg-gradient-to-br from-teal-400 to-teal-500 rounded-2xl blur-md opacity-25"></div>
+                          <IconTile tone="teal" size="lg" className="relative">
+                            <CalendarDays className="w-8 h-8" />
+                          </IconTile>
                         </div>
                         <div className="text-left">
-                          <p className="text-4xl font-medium leading-none text-gray-900 dark:text-gray-100 mb-0.5">{inspectedEvents.length}</p>
-                          <p className="text-base font-medium text-gray-700 dark:text-gray-300">Events Ready to Import</p>
-                          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Includes all classes, recollections, and recurring sessions.</p>
+                          <p className="text-4xl font-medium leading-none text-foreground mb-0.5 tabular-nums">{inspectedEvents.length}</p>
+                          <p className="text-base font-medium text-label-foreground">Events Ready to Import</p>
+                          <p className="mt-1 text-sm text-subtle-foreground">Includes all classes, recollections, and recurring sessions.</p>
                         </div>
                       </div>
                     </div>
@@ -1020,31 +1299,35 @@ export default function App() {
         <div className="max-w-3xl mx-auto pt-12 pb-8 px-4 border-t border-gray-200/30 dark:border-slate-700/50 mt-16">
           <div className="space-y-6">
             <div>
-              <h3 className="text-sm text-gray-500 dark:text-gray-400 mb-3 flex items-center gap-2">
+              <h3 className="text-sm text-subtle-foreground mb-3 flex items-center gap-2">
                 <Shield className="w-4 h-4" />
                 Privacy Notice
               </h3>
-              <p className="text-sm text-gray-500 dark:text-gray-400 leading-relaxed">
+              <p className="max-w-[62ch] text-sm text-subtle-foreground leading-relaxed">
                 We use Google Analytics to understand general site usage. Your uploaded PDF is processed in memory only and is never stored on our servers. All data extracted from the PDF is automatically deleted after processing.
               </p>
             </div>
 
             <div>
-              <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">Need help?</p>
+              <p className="text-sm text-subtle-foreground mb-3">Need help?</p>
               <div className="flex flex-wrap gap-3 text-sm">
                 <a
                   href="mailto:angelo_nuque@dlsu.edu.ph"
-                  className="inline-flex items-center gap-1.5 text-gray-600 dark:text-gray-400 hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors"
+                  className="inline-flex items-center gap-1.5 text-muted-foreground hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors"
                 >
                   <Mail className="w-3.5 h-3.5" />
                   <span>angelo_nuque@dlsu.edu.ph</span>
                 </a>
-                <span className="text-gray-300 dark:text-gray-600">•</span>
+                {/* A separator, not content. Left readable to a screen reader
+                    it announces "bullet" between two links; hidden, it is also
+                    exempt from the contrast floor it could never meet without
+                    becoming louder than the links it separates. */}
+                <span aria-hidden="true" className="text-gray-300 dark:text-gray-600">•</span>
                 <a
                   href="https://github.com/Stilsi-dev/EAFSchedulr/issues"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1.5 text-gray-600 dark:text-gray-400 hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors"
+                  className="inline-flex items-center gap-1.5 text-muted-foreground hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors"
                 >
                   <Github className="w-3.5 h-3.5" />
                   <span>Report on GitHub</span>
@@ -1059,9 +1342,12 @@ export default function App() {
       {/* Footer - Always at bottom */}
       <div className="w-full border-t border-gray-200/30 dark:border-slate-700/50 bg-white/40 dark:bg-slate-900/60 backdrop-blur-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 text-center">
-          <div className="inline-flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
+          <div className="inline-flex items-center gap-2 text-sm text-muted-foreground">
             <span>Made by a Lasallian</span>
-            <Heart className="w-4 h-4 text-emerald-500 dark:text-emerald-400 fill-emerald-500 dark:fill-emerald-400 dark:drop-shadow-[0_0_8px_rgba(52,211,153,0.4)]" />
+            {/* One step down from emerald-500, which measured 2.4:1 here and
+                read as a pale smudge rather than a mark of authorship. Dark
+                mode keeps its lighter fill and its glow. */}
+            <Heart className="w-4 h-4 text-emerald-600 dark:text-emerald-400 fill-emerald-600 dark:fill-emerald-400 dark:drop-shadow-[0_0_8px_rgba(52,211,153,0.4)]" />
             <span>for Lasallians</span>
           </div>
         </div>
@@ -1084,9 +1370,9 @@ function DatePill({ date }: { date: string }) {
   if (!date) return null;
 
   return (
-    <div className="inline-flex items-center gap-1.5 text-[13px] text-gray-500 dark:text-gray-400">
+    <div className="inline-flex items-center gap-1.5 text-[13px] text-subtle-foreground">
       <Calendar className="w-3 h-3 opacity-60" />
-      <span className="leading-none">{formatDisplayDate(date)}</span>
+      <span className="leading-none tabular-nums">{formatDisplayDate(date)}</span>
     </div>
   );
 }
