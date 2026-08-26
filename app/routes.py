@@ -22,6 +22,34 @@ from app.utils import format_display_datetime, APP_TZ
 bp = Blueprint("main", __name__)
 
 
+def log_parse_shape(endpoint: str, parsed) -> None:
+    """Record the *shape* of a parse, never its content.
+
+    Counts and course codes only - enough that a change to the Archers Hub EAF
+    format shows up as a spike in unreadable rows, with nothing that identifies
+    a student or discloses their schedule.
+    """
+    current_app.logger.info(
+        "parse endpoint=%s events=%d courses=%d ambiguous=%d metadata_matched=%s",
+        endpoint,
+        len(parsed.events),
+        len({event.code for event in parsed.events}),
+        len(parsed.ambiguous_rows),
+        parsed.suggested_filename != "eaf-calendar.ics",
+    )
+    if parsed.ambiguous_rows:
+        current_app.logger.warning(
+            "unreadable rows endpoint=%s count=%d codes=%s",
+            endpoint,
+            len(parsed.ambiguous_rows),
+            sorted({row.code for row in parsed.ambiguous_rows}),
+        )
+    if not parsed.events:
+        current_app.logger.warning(
+            "no events parsed endpoint=%s ambiguous=%d", endpoint, len(parsed.ambiguous_rows)
+        )
+
+
 def format_recollection_summary(recollection_dates: dict[str, date]) -> list[str]:
     """Return human-readable recollection lines for the result summary."""
     return [
@@ -69,9 +97,13 @@ def inspect() -> Any:
         events = parsed.events
         ambiguous_rows = parsed.ambiguous_rows
     except ValueError as exc:
+        current_app.logger.warning("inspect rejected PDF: %s", exc)
         return jsonify({"error": str(exc)}), 400
     except Exception:
+        current_app.logger.exception("inspect failed unexpectedly while reading PDF")
         return jsonify({"error": "An unexpected error occurred while reading the PDF. Please ensure you uploaded a valid EAF PDF."}), 400
+
+    log_parse_shape("inspect", parsed)
 
     if not events:
         # Return the unreadable rows too: when nothing parses, they are the
@@ -147,15 +179,19 @@ def generate() -> Any:
         events = parsed.events
         ambiguous_rows = parsed.ambiguous_rows
     except ValueError as exc:
+        current_app.logger.warning("generate rejected PDF: %s", exc)
         if wants_json:
             return json_error(str(exc))
         flash(str(exc))
         return redirect(url_for("main.index"))
     except Exception:
+        current_app.logger.exception("generate failed unexpectedly while reading PDF")
         if wants_json:
             return json_error("An unexpected error occurred. Please ensure you uploaded a valid EAF PDF.")
         flash("An unexpected error occurred. Please ensure you uploaded a valid EAF PDF.")
         return redirect(url_for("main.index"))
+
+    log_parse_shape("generate", parsed)
 
     if not events:
         if wants_json:

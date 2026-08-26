@@ -3,12 +3,54 @@
 Provides a simple `create_app` factory that constructs and configures
 the Flask application used by `run.py` and any WSGI server.
 """
+import gzip
+import logging
 import os
 from pathlib import Path
 
-from flask import Flask
+from flask import Flask, jsonify, request
 
+from app.config import MAX_PDF_SIZE_MB, MAX_UPLOAD_SIZE_BYTES
 from app.extensions import limiter
+
+# Response compression ------------------------------------------------------
+#
+# The built JS and CSS come to ~280KB uncompressed and ~71KB gzipped. On the
+# mobile connections this app is actually opened on, that difference is most of
+# the time the student spends looking at an empty page. A CDN in front of the
+# app may compress too, but the origin cannot assume one is there.
+
+# Types worth compressing. Anything already compressed (PDF, images, the
+# woff2 that a future display face would ship as) only gets bigger.
+COMPRESSIBLE_MIMETYPES = frozenset({
+	"application/javascript",
+	"text/javascript",
+	"application/json",
+	"image/svg+xml",
+})
+
+# Below this, the gzip header costs more than it saves.
+COMPRESS_MIN_BYTES = 1024
+
+# A ceiling so a single response can never be buffered without bound. Nothing
+# this app serves comes close; generated calendars are a few KB.
+COMPRESS_MAX_BYTES = 2 * 1024 * 1024
+
+# Compressed bytes for static assets, keyed by ETag - which for a static file
+# already encodes its path, size and mtime, so a rebuilt asset misses and
+# recompresses on its own. Bounded because the key space is the handful of
+# files in `public/`, and this runs under `gunicorn -w 1`.
+_COMPRESSED_CACHE: dict[str, bytes] = {}
+_COMPRESSED_CACHE_LIMIT = 32
+
+
+def _gzip_bytes(data: bytes) -> bytes:
+	"""Compress `data` with gzip, without the mtime field.
+
+	`mtime=0` keeps the output byte-identical between runs so it stays
+	comparable and cacheable.
+	"""
+	return gzip.compress(data, compresslevel=9, mtime=0)
 
 
 def create_app() -> Flask:
@@ -29,6 +71,17 @@ def create_app() -> Flask:
 		# Use a provided secret in production; fall back for local development
 		app.secret_key = os.environ.get("FLASK_SECRET", "dev-secret-please-change")
 
+		# Reject oversized bodies during request parsing instead of buffering
+		# the whole upload and rejecting it in the view.
+		app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD_SIZE_BYTES
+
+		@app.errorhandler(413)
+		def handle_upload_too_large(_error):
+			return (
+				jsonify({"error": f"File is too large. Maximum size is {MAX_PDF_SIZE_MB}MB."}),
+				413,
+			)
+
 		# Security headers on every response
 		@app.after_request
 		def add_security_headers(response):
@@ -46,6 +99,91 @@ def create_app() -> Flask:
 				"frame-ancestors 'none';"
 			)
 			return response
+
+		# Cache policy.
+		#
+		# Vite content-hashes everything under `/assets`, so those URLs can
+		# never go stale - a rebuild changes the filename. Flask's default for
+		# static files is `no-cache`, which throws that away: every student
+		# re-fetches both bundles from the origin, and a CDN in front of the app
+		# reports the request as dynamic and declines to hold a copy near them.
+		@app.after_request
+		def add_cache_headers(response):
+			path = request.path
+
+			if path.startswith("/download/"):
+				# A single-use link to one student's own schedule. It must not
+				# be held anywhere, by anything.
+				response.headers["Cache-Control"] = "no-store, private"
+			elif path.startswith("/assets/"):
+				response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+			elif path in ("/favicon.svg", "/schedulr-logo.svg"):
+				# Not content-hashed, and referenced by a stable URL, so these
+				# revalidate daily rather than never.
+				response.headers["Cache-Control"] = "public, max-age=86400"
+			else:
+				# The HTML names the current asset hashes, so it has to be
+				# revalidated or a student boots yesterday's build.
+				response.headers["Cache-Control"] = "no-cache"
+
+			return response
+
+		# Compression. Registered after the cache handler, so it runs first and
+		# the two never disagree about Content-Length.
+		@app.after_request
+		def compress_response(response):
+			if "gzip" not in request.headers.get("Accept-Encoding", "").lower():
+				return response
+			if not (200 <= response.status_code < 300):
+				return response
+			if "Content-Encoding" in response.headers:
+				return response
+
+			mimetype = (response.mimetype or "").lower()
+			if not (mimetype.startswith("text/") or mimetype in COMPRESSIBLE_MIMETYPES):
+				return response
+
+			# Reject on the declared length before reading anything, so an
+			# oversized response is never pulled into memory to measure it.
+			declared = response.content_length
+			if declared is not None and not (COMPRESS_MIN_BYTES <= declared <= COMPRESS_MAX_BYTES):
+				return response
+
+			etag_value = response.get_etag()[0]
+			cached = _COMPRESSED_CACHE.get(etag_value) if etag_value else None
+
+			if cached is None:
+				# `send_file` streams by default; turning that off is what lets
+				# the body be read here. Bounded by the size checks.
+				response.direct_passthrough = False
+				data = response.get_data()
+				if not (COMPRESS_MIN_BYTES <= len(data) <= COMPRESS_MAX_BYTES):
+					return response
+
+				cached = _gzip_bytes(data)
+				if len(cached) >= len(data):
+					# Already-dense content; sending it compressed would be a
+					# CPU cost on both ends for nothing.
+					return response
+
+				if etag_value:
+					if len(_COMPRESSED_CACHE) >= _COMPRESSED_CACHE_LIMIT:
+						_COMPRESSED_CACHE.clear()
+					_COMPRESSED_CACHE[etag_value] = cached
+
+			response.direct_passthrough = False
+			response.set_data(cached)
+			response.headers["Content-Encoding"] = "gzip"
+			response.headers["Content-Length"] = str(len(cached))
+			# Without this, a shared cache could hand the gzipped body to a
+			# client that never asked for it.
+			response.vary.add("Accept-Encoding")
+
+			return response
+
+		# Parse-shape logging is emitted at INFO; without this the default
+		# effective level hides it and format drift stays invisible in prod.
+		app.logger.setLevel(logging.INFO)
 
 		# Rate limiting: 20 PDF uploads/minute per IP on the heavy endpoints
 		limiter.init_app(app)

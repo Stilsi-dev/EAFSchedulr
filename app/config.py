@@ -8,6 +8,11 @@ DEFAULT_WEEKS = 14
 MAX_PDF_SIZE_MB = 10
 MAX_PDF_SIZE_BYTES = MAX_PDF_SIZE_MB * 1024 * 1024
 
+# Hard request cap enforced by Werkzeug before the view runs. Deliberately a
+# little above MAX_PDF_SIZE_BYTES: a file just over the limit should get the
+# specific "File is too large" message, not an opaque 413.
+MAX_UPLOAD_SIZE_BYTES = MAX_PDF_SIZE_BYTES + 2 * 1024 * 1024
+
 # Recollection Titles
 RECOLLECTION_TITLES = {
     "LASARE1": "LASARE1 - LASALLIAN RECOLLECTION 1",
