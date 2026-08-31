@@ -247,6 +247,7 @@ export default function App() {
   const [parseError, setParseError] = useState<ParseError | null>(null);
   // Creating the calendar failed - the form stays put so the student can retry.
   const [submitError, setSubmitError] = useState<SubmitError | null>(null);
+  const [downloadError, setDownloadError] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState("");
   const [ambiguousRows, setAmbiguousRows] = useState<AmbiguousRow[]>([]);
   const [acknowledgedMissingRows, setAcknowledgedMissingRows] = useState(false);
@@ -650,6 +651,7 @@ export default function App() {
       setGeneratedFilename(payload.generated_filename || generatedFilename);
       setGeneratedAt(payload.generated_at || "");
       setIsScheduleCreated(true);
+      setDownloadError(null);
       setStatusMessage("Your calendar file is ready to download.");
     } catch {
       setSubmitError({
@@ -662,7 +664,7 @@ export default function App() {
     }
   };
 
-  const handleDownload = () => {
+  const handleDownload = async () => {
     if (!downloadUrl) {
       setSubmitError({
         kind: "server",
@@ -672,7 +674,46 @@ export default function App() {
       return;
     }
 
-    window.location.href = downloadUrl;
+    // Fetched, not navigated to. Navigation hands the browser whatever the
+    // server says, and for an expired token that is a redirect back to the
+    // shell: the page reloads and the parsed schedule, the file and every
+    // ambiguous-row decision go with it, for a link that had merely gone
+    // stale. Reading the response here keeps all of it on screen and makes the
+    // recovery one click instead of a re-upload.
+    setDownloadError(null);
+
+    try {
+      const response = await fetch(downloadUrl, {
+        headers: { Accept: "application/json" },
+      });
+
+      if (!response.ok) {
+        const { message } = await readErrorMessage(
+          response,
+          "That download link expired. Create the schedule again.",
+        );
+        setDownloadError(message);
+        setStatusMessage(message);
+        return;
+      }
+
+      const blob = await response.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = objectUrl;
+      link.download = generatedFilename || "schedule.ics";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      // Revoked on a delay rather than immediately: some browsers abort a
+      // download whose object URL is released in the same tick as the click.
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+    } catch {
+      setDownloadError(
+        "Could not reach the app server. Your schedule is still here - try again.",
+      );
+      setStatusMessage("Could not reach the app server.");
+    }
   };
 
   const courseSummaries = useMemo(
@@ -1204,6 +1245,28 @@ export default function App() {
                 </div>
               </div>
             </div>
+
+            {/* The link expired, or the network dropped. The schedule, the file
+                and every form value are still here, so the way out is one button
+                rather than another upload. */}
+            {downloadError && (
+              <Alert
+                tone="danger"
+                variant="inline"
+                className="mx-auto mb-6 max-w-4xl"
+                title="Couldn't download your calendar"
+                message={downloadError}
+              >
+                <button
+                  type="button"
+                  onClick={handleCreateSchedule}
+                  disabled={isGenerating}
+                  className="rounded-xl border border-rose-300 px-5 py-3 text-sm text-rose-900 transition-colors hover:bg-rose-100/60 disabled:cursor-wait disabled:opacity-70 dark:border-rose-500/40 dark:text-rose-100 dark:hover:bg-rose-500/10"
+                >
+                  Create the schedule again
+                </button>
+              </Alert>
+            )}
 
             {/* Content Cards Container */}
             <div className="space-y-6">

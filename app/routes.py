@@ -297,8 +297,20 @@ def download_ics(token: str):
     Returns:
         File download response or redirect if token invalid/expired
     """
+    # The app fetches this endpoint rather than navigating to it, so a refusal
+    # has to arrive in a form it can read. The redirect below would be followed
+    # to the shell, whose 200 the client would take for success, and the flash
+    # it carries has nothing to render it: `index` serves a static file, not a
+    # template. Kept for plain navigation, which is the only caller that could
+    # ever have benefited from it.
+    wants_json = "application/json" in request.headers.get("Accept", "")
+
     result = consume_token(token)
     if result is None:
+        if wants_json:
+            return jsonify(
+                {"error": "That download link expired. Create the schedule again."}
+            ), 410
         flash("Download link expired. Please generate a new calendar.")
         return redirect(url_for("main.index"))
 

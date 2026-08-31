@@ -212,3 +212,25 @@ def test_inspect_returns_rows_when_nothing_parses(client):
     assert "error" in body
     assert len(body["ambiguous_rows"]) == 1
     assert body["ambiguous_rows"][0]["code"] == "CSSWENG"
+
+
+def test_expired_download_token_answers_json_for_the_app(client):
+    """The app fetches this endpoint, so a refusal has to be readable.
+
+    A redirect would be followed to the shell, whose 200 the client reads as
+    success, and the flash it carries has nothing to render it: `index` serves
+    a static file rather than a template.
+    """
+    response = client.get("/download/deadbeef", headers={"Accept": "application/json"})
+
+    assert response.status_code == 410
+    assert response.headers["Content-Type"].startswith("application/json")
+    assert "expired" in response.get_json()["error"].lower()
+
+
+def test_expired_download_token_still_redirects_plain_navigation(client):
+    """A browser following the link directly keeps the old behaviour."""
+    response = client.get("/download/deadbeef")
+
+    assert response.status_code == 302
+    assert response.headers["Location"].endswith("/")
