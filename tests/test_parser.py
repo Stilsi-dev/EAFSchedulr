@@ -157,3 +157,58 @@ def test_ordinary_room_and_empty_room_still_parse():
     )
     assert parsed.ambiguous_rows == []
     assert [e.location for e in parsed.events] == ["G206", "TBA"]
+
+
+def test_unlisted_course_type_still_parses():
+    """Course type is a field to step over, not a list to keep up with.
+
+    It was a closed alternation, so every type nobody had seen yet dropped a
+    real class out of the calendar and onto the student's own to-do list.
+    "Research / Capstone" was added that way after an EAF broke; this row is
+    "Practicum / Internship" arriving the same way. The parser never reads the
+    type, so there is nothing to gain by enumerating it.
+    """
+    parsed = parse_eaf_text(
+        "Sr.No Course Course Type Section Credits Day/Time/Room" + chr(10) +
+        "1 PRCCC01-PRAC ORIENTATION FOR ALL COMPUTING AND INFORMATION MAJORS "
+        "Practicum / Internship S02 1.00 SAT | 07:00 PM-08:00 PM |" + chr(10)
+    )
+    assert parsed.ambiguous_rows == []
+    assert len(parsed.events) == 1
+    event = parsed.events[0]
+    assert event.code == "PRCCC01"
+    assert event.course_name == "PRAC ORIENTATION FOR ALL COMPUTING AND INFORMATION MAJORS"
+    assert (event.day, event.start_time, event.end_time) == ("SAT", "07:00 PM", "08:00 PM")
+    assert event.location == "TBA"
+
+
+@pytest.mark.parametrize(
+    "course_type",
+    ["Lecture", "Laboratory", "Seminar / Workshop", "Research / Capstone",
+     "Practicum / Internship", "Practicum/Internship", "Field Work"],
+)
+def test_course_type_shapes_do_not_eat_the_course_name(course_type):
+    """Whatever the type is, the name either side of it must survive intact.
+
+    The type sits between two free-text fields, so a looser pattern earns its
+    keep only if the split lands in the same place every time.
+    """
+    parsed = parse_eaf_text(
+        "Sr.No Course Course Type Section Credits Day/Time/Room" + chr(10) +
+        f"1 CSSWENG-SOFTWARE ENGINEERING {course_type} S01 3.00 "
+        "MON | 09:15 AM-10:45 AM | G206" + chr(10)
+    )
+    assert parsed.ambiguous_rows == []
+    assert [e.course_name for e in parsed.events] == ["SOFTWARE ENGINEERING"]
+    assert [e.title for e in parsed.events] == ["CSSWENG S01"]
+
+
+def test_row_with_no_course_type_at_all_is_still_flagged():
+    """Loosening the field must not degrade it into "anything goes"."""
+    parsed = parse_eaf_text(
+        "Sr.No Course Course Type Section Credits Day/Time/Room" + chr(10) +
+        "1 CSSWENG-SOFTWARE ENGINEERING S01 3.00 MON | 09:15 AM-10:45 AM | G206" + chr(10)
+    )
+    assert parsed.events == []
+    assert len(parsed.ambiguous_rows) == 1
+    assert parsed.ambiguous_rows[0].code == "CSSWENG"

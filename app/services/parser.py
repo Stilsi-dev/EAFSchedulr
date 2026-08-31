@@ -35,9 +35,21 @@ class ParsedEAF:
     suggested_filename: str
 
 
+# The course type is a field to step over, not a list to keep up with. It was
+# an alternation of the four types we happened to have seen, so the first EAF
+# using a fifth failed the whole row and handed a real class back to the
+# student to enter by hand. "Research / Capstone" had already been bolted on
+# that way; "Practicum / Internship" was the next one.
+#
+# Nothing downstream reads the type, so the pattern's only job is to cross the
+# field without eating the course name in front of it. Course names come out of
+# the PDF upper case and types come out title case, so a title-case run is the
+# boundary - which still leaves a row with no type at all failing, as it should.
+COURSE_TYPE = r"[A-Z][a-z]+(?:\s*/\s*[A-Z][a-z]+|\s+[A-Z][a-z]+)*"
+
 COURSE_ROW_PATTERN = re.compile(
     r"^\d+\s+([A-Z0-9]+)-(.+?)\s+"
-    r"(Lecture|Seminar / Workshop|Laboratory|Research / Capstone)\s+"
+    rf"({COURSE_TYPE})\s+"
     r"([A-Z0-9]+)\s+([\d.]+)\s+(.*)$"
 )
 
