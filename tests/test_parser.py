@@ -242,5 +242,95 @@ def test_the_diagnostic_cannot_name_a_field_the_matcher_lacks():
 
     assert [f for f, _ in COURSE_ROW_PROBES] == [f for f, _ in COURSE_ROW_FIELDS]
     assert COURSE_ROW_PROBES[-1][1].pattern == COURSE_ROW_PATTERN.pattern
-    # Type and credits carry no group: reading them must be a deliberate edit.
-    assert set(COURSE_ROW_PATTERN.groupindex) == {"code", "name", "section", "schedule"}
+    # Credits carries no group: nothing reads it. The type does, but only to
+    # hint a one-time checkbox, never to decide what a calendar contains.
+    assert set(COURSE_ROW_PATTERN.groupindex) == {"code", "name", "type", "section", "schedule"}
+
+
+def test_event_carries_the_course_type():
+    """The type is what lets the UI offer a one-time checkbox on the right rows.
+
+    It stays a hint: it decides what is surfaced, never what the calendar
+    contains, so a type corrupted by an unknown column costs a missing prompt
+    rather than a wrong schedule.
+    """
+    parsed = parse_eaf_text(
+        "Sr.No Course Course Type Section Credits Day/Time/Room\n"
+        "1 PRCCC01-PRAC ORIENTATION Practicum / Internship S02 1.00 "
+        "SAT | 07:00 PM-08:00 PM |\n"
+    )
+    assert [e.course_type for e in parsed.events] == ["Practicum / Internship"]
+
+
+def test_one_time_candidates_are_hinted_by_type():
+    """SAS2000 is offered the checkbox; the lectures around it are not.
+
+    bsfin also carries LASARE2, which is excluded: a recollection already has
+    a required date field, so offering it a second, optional one would let a
+    student answer the same question two contradictory ways.
+    """
+    from app.services.calendar import get_one_time_candidates
+
+    parsed = parse_fixture("bsfin_lasare2_thu")
+    assert get_one_time_candidates(parsed.events) == {"SAS2000": {"WED"}}
+
+
+def test_a_lecture_is_never_offered_as_one_time():
+    """Unchecking is not the safeguard - not being asked is.
+
+    Every Lecture and Laboratory in the samples meets weekly, so offering the
+    box on one is an invitation to delete a term of real classes by mistake.
+    """
+    from app.services.calendar import get_one_time_candidates
+
+    for slug in ("cs_lasare3_wed", "cpe_lasare3_wed", "bsece_lasare3_wed_tba"):
+        parsed = parse_fixture(slug)
+        offered = get_one_time_candidates(parsed.events)
+        types = {e.code: e.course_type for e in parsed.events}
+        assert all(types[code] != "Lecture" for code in offered), slug
+        assert all(types[code] != "Laboratory" for code in offered), slug
+
+
+def test_a_marked_course_becomes_one_event_instead_of_a_weekly_series():
+    """The generator emits by what is in one_time_dates, not by what LASARE is."""
+    from datetime import date
+
+    from app.services.calendar import build_ics
+
+    parsed = parse_fixture("bsfin_lasare2_thu")
+    ics = build_ics(
+        parsed.events,
+        date(2026, 9, 1),
+        14,
+        one_time_dates={"LASARE2": date(2026, 9, 3), "SAS2000": date(2026, 9, 2)},
+    )
+
+    blocks = [block for block in ics.split("BEGIN:VEVENT") if "SAS2000" in block]
+    assert len(blocks) == 1, "a one-time session should not repeat"
+    assert "RRULE" not in blocks[0]
+    assert "20260902" in blocks[0]
+
+    weekly = [block for block in ics.split("BEGIN:VEVENT") if "FINCPMA" in block]
+    assert weekly and all("RRULE" in block for block in weekly)
+
+
+def test_a_recollection_without_a_date_still_fails_loudly():
+    """The guarantee the fold must not lose.
+
+    Keying emission on one_time_dates alone would let a recollection with no
+    date fall through to the weekly branch, which is silently wrong: the whole
+    reason recollections are special is that a weekly recurrence is never right
+    for them.
+    """
+    from datetime import date
+
+    from app.services.calendar import build_ics
+
+    parsed = parse_fixture("bsfin_lasare2_thu")
+    with pytest.raises(ValueError, match="LASARE2"):
+        build_ics(
+            parsed.events,
+            date(2026, 9, 1),
+            14,
+            one_time_dates={"SAS2000": date(2026, 9, 2)},
+        )

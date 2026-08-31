@@ -52,16 +52,20 @@ COURSE_TYPE = r"[A-Z][a-z]+(?:\s*/\s*[A-Z][a-z]+|\s+[A-Z][a-z]+)*"
 # of the grammar would drift, and a reason naming the wrong field is worse than
 # the flat "bad row" it replaces.
 #
-# Type and credits are deliberately non-capturing. Nothing reads either, and a
-# title-case run absorbs an unknown neighbouring column silently - harmless
-# only while the field stays unread, and every row still parses correctly when
-# it happens. Reading the type has to be a deliberate edit here rather than an
-# available group number.
+# Credits stay non-capturing: nothing reads them.
+#
+# The type is captured, but only ever as a hint for which courses to offer a
+# one-time checkbox on. A title-case run absorbs an unknown neighbouring column
+# silently, so the type is not trustworthy enough to decide what a calendar
+# contains - and it never does. If a new column corrupts it, the checkbox stops
+# being offered and the student can still set it by hand. Keep it that way: the
+# moment this value decides an event's shape, that absorption becomes silent
+# corruption.
 COURSE_ROW_FIELDS: tuple[tuple[str, str], ...] = (
     ("course number", r"^\d+\s+"),
     ("course code", r"(?P<code>[A-Z0-9]+)-"),
     ("course name", r"(?P<name>.+?)\s+"),
-    ("course type", rf"(?:{COURSE_TYPE})\s+"),
+    ("course type", rf"(?P<type>{COURSE_TYPE})\s+"),
     ("section", r"(?P<section>[A-Z0-9]+)\s+"),
     ("credits", r"(?:[\d.]+)\s+"),
     ("schedule", r"(?P<schedule>.*)$"),
@@ -247,6 +251,7 @@ def parse_eaf_text(text: str) -> ParsedEAF:
 
         code = normalize_text(match["code"])
         course_name = normalize_text(match["name"])
+        course_type = normalize_text(match["type"])
         section = normalize_text(match["section"])
         schedule_text = normalize_text(match["schedule"])
         title = f"{code} {section}"
@@ -270,6 +275,7 @@ def parse_eaf_text(text: str) -> ParsedEAF:
                     code=code,
                     title=title,
                     course_name=course_name,
+                    course_type=course_type,
                     day=day,
                     start_time=start_time,
                     end_time=end_time,

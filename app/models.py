@@ -11,6 +11,8 @@ class Event:
         code: Course code (e.g., "CS101")
         title: Event title for calendar (e.g., "CS101 SEC-A")
         course_name: Full course name (e.g., "Introduction to Computer Science")
+        course_type: Course type as printed on the EAF (e.g., "Lecture"). Used
+            only to hint which courses may be one-time sessions.
         day: Day of week (MON, TUE, WED, THU, FRI, SAT)
         start_time: Start time in 12-hour format (e.g., "7:30 AM")
         end_time: End time in 12-hour format (e.g., "8:30 AM")
@@ -19,6 +21,7 @@ class Event:
     code: str
     title: str
     course_name: str
+    course_type: str
     day: str
     start_time: str
     end_time: str

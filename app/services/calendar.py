@@ -12,6 +12,7 @@ from app.config import (
     DAY_LABELS,
     DAY_TO_WEEKDAY,
     ICS_TIMEZONE_ID,
+    ONE_TIME_COURSE_TYPES,
     RECOLLECTION_TITLES,
     TIMETABLE_SLOT_HEIGHT,
     TIMETABLE_SLOT_MINUTES,
@@ -31,6 +32,26 @@ from app.utils import (
 )
 
 
+def get_one_time_candidates(events: Iterable[Event]) -> dict[str, set[str]]:
+    """Course codes to offer a one-time checkbox on, with their weekdays.
+
+    Recollections are excluded: they already have a required date field, and
+    offering a second optional one would let a student answer the same question
+    two contradictory ways.
+    """
+    candidates: dict[str, set[str]] = {}
+
+    for event in events:
+        if event.code in RECOLLECTION_TITLES:
+            continue
+        if event.course_type not in ONE_TIME_COURSE_TYPES:
+            continue
+
+        candidates.setdefault(event.code, set()).add(event.day.strip().upper())
+
+    return candidates
+
+
 def get_recollection_day_options(events: Iterable[Event]) -> dict[str, set[str]]:
     """Collect the weekday codes seen for each recollection course code."""
     day_options: dict[str, set[str]] = {}
@@ -42,6 +63,47 @@ def get_recollection_day_options(events: Iterable[Event]) -> dict[str, set[str]]
         day_options.setdefault(event.code, set()).add(event.day.strip().upper())
 
     return day_options
+
+
+def weekday_mismatch(expected_days: set[str], chosen: date) -> str | None:
+    """Return the human weekday list when `chosen` falls on none of them.
+
+    Returns None when the date is fine, so callers can word their own message:
+    a recollection and a ticked one-time session are the same check with
+    different names attached.
+    """
+    allowed_weekdays = {
+        DAY_TO_WEEKDAY[day] for day in expected_days if day in DAY_TO_WEEKDAY
+    }
+    if not allowed_weekdays or chosen.weekday() in allowed_weekdays:
+        return None
+
+    return ", ".join(
+        DAY_LABELS[day]
+        for day in sorted(expected_days, key=lambda day: DAY_TO_WEEKDAY.get(day, 99))
+        if day in DAY_LABELS
+    )
+
+
+def validate_one_time_dates(
+    events: Iterable[Event],
+    one_time_dates: dict[str, date],
+) -> None:
+    """Check ticked one-time dates against the weekday the EAF printed.
+
+    Only codes actually present are checked: an absent code means the student
+    left the box alone, which is the default and always valid.
+    """
+    for code, expected_days in get_one_time_candidates(events).items():
+        chosen = one_time_dates.get(code)
+        if chosen is None:
+            continue
+
+        allowed_labels = weekday_mismatch(expected_days, chosen)
+        if allowed_labels:
+            raise ValueError(
+                f"{code} is scheduled on {allowed_labels}. Please choose a {allowed_labels} date."
+            )
 
 
 def validate_recollection_dates(
@@ -65,17 +127,8 @@ def validate_recollection_dates(
         if recollection_date is None:
             raise ValueError(f"A specific recollection date is required for {RECOLLECTION_TITLES[code]}.")
 
-        allowed_weekdays = {
-            DAY_TO_WEEKDAY[day]
-            for day in expected_days
-            if day in DAY_TO_WEEKDAY
-        }
-        if allowed_weekdays and recollection_date.weekday() not in allowed_weekdays:
-            allowed_labels = ", ".join(
-                DAY_LABELS[day]
-                for day in sorted(expected_days, key=lambda day: DAY_TO_WEEKDAY.get(day, 99))
-                if day in DAY_LABELS
-            )
+        allowed_labels = weekday_mismatch(expected_days, recollection_date)
+        if allowed_labels:
             raise ValueError(
                 f"{RECOLLECTION_TITLES[code]} is scheduled on {allowed_labels}. Please choose a {allowed_labels} date."
             )
@@ -255,27 +308,39 @@ def build_ics(
     events: Iterable[Event],
     term_start: date,
     weeks: int,
-    recollection_dates: dict[str, date] | None = None,
+    one_time_dates: dict[str, date] | None = None,
 ) -> str:
     """Build RFC 5545 iCalendar file content.
-    
-    Generates an ICS file with recurring weekly events for regular courses
-    and one-time events for recollections. Includes Manila timezone info.
-    
+
+    Emits a weekly recurrence for each course, except those named in
+    `one_time_dates`, which get a single event on the date given. The generator
+    does not know why a course is one-time: a recollection the student dated and
+    an orientation they ticked arrive here identically.
+
     Args:
         events: Events to include
         term_start: First day of term (used for recurrence calculation)
         weeks: Number of weeks to generate recurring events for
-        recollection_dates: Optional specific dates for recollection events
-        
+        one_time_dates: Course codes that meet once, and the date each falls on
+
     Returns:
         Complete iCalendar file as string (RFC 5545 format)
-        
+
     Raises:
-        ValueError: If recollection dates are required but missing
+        ValueError: If a recollection has no date
     """
     now = datetime.now(timezone.utc)
-    recollection_dates = recollection_dates or {}
+    one_time_dates = one_time_dates or {}
+
+    # A recollection with no date must not fall through to the weekly branch.
+    # Keying emission purely on `one_time_dates` would do exactly that, and a
+    # weekly recurrence is never right for a recollection, so the omission has
+    # to be caught here rather than produce a plausible wrong calendar.
+    for event in events:
+        if event.code in RECOLLECTION_TITLES and event.code not in one_time_dates:
+            raise ValueError(
+                f"A specific recollection date is required for {RECOLLECTION_TITLES[event.code]}."
+            )
     lines = [
         "BEGIN:VCALENDAR",
         "VERSION:2.0",
@@ -292,11 +357,9 @@ def build_ics(
     ]
 
     for event in events:
-        if event.code in RECOLLECTION_TITLES:
-            # One-time recollection event on specific date
-            recollection_date = recollection_dates.get(event.code)
-            if recollection_date is None:
-                raise ValueError(f"A specific recollection date is required for {RECOLLECTION_TITLES[event.code]}.")
+        if event.code in one_time_dates:
+            # A single session on the date the student gave us
+            recollection_date = one_time_dates[event.code]
 
             start_clock = parse_clock(event.start_time)
             end_clock = parse_clock(event.end_time)

@@ -14,7 +14,13 @@ from werkzeug.datastructures import FileStorage
 from app.config import DEFAULT_WEEKS, RECOLLECTION_TITLES
 from app.extensions import limiter
 from app.token_store import create as create_token, consume as consume_token
-from app.services.calendar import build_ics, build_timetable_preview, validate_recollection_dates
+from app.services.calendar import (
+    build_ics,
+    build_timetable_preview,
+    get_one_time_candidates,
+    validate_one_time_dates,
+    validate_recollection_dates,
+)
 from app.services.parser import parse_eaf_pdf, validate_pdf_file
 from app.utils import format_display_datetime, APP_TZ
 
@@ -135,6 +141,13 @@ def inspect() -> Any:
             "has_recollection": any(ev["is_recollection"] for ev in serialized_events),
             "recollection_codes": sorted(list(recollection_map.keys())),
             "recollection_days": recollection_map,
+            # Which courses to OFFER a one-time checkbox on. A hint, not a
+            # verdict: the student answers it, and leaving it alone keeps the
+            # weekly recurrence they already had.
+            "one_time_candidates": {
+                code: sorted(days)
+                for code, days in get_one_time_candidates(parsed.events).items()
+            },
             "events": serialized_events,
             "ambiguous_rows": [ar.__dict__ for ar in ambiguous_rows],
             "generated_filename": parsed.suggested_filename,
@@ -241,10 +254,32 @@ def generate() -> Any:
                 flash(f"Enter a valid date for {RECOLLECTION_TITLES[code]} in YYYY-MM-DD format.")
                 return redirect(url_for("main.index"))
 
+    # Courses the student ticked as meeting only once. Absent means unticked,
+    # which keeps the weekly recurrence: the default must never lose classes.
+    student_marked: dict[str, date] = {}
+    for code in sorted(get_one_time_candidates(events)):
+        one_time_raw = request.form.get(f"one_time_date_{code}") or ""
+        if not one_time_raw:
+            continue
+
+        try:
+            student_marked[code] = date.fromisoformat(one_time_raw)
+        except ValueError:
+            message = f"Enter a valid date for {code} in YYYY-MM-DD format."
+            if wants_json:
+                return json_error(message)
+            flash(message)
+            return redirect(url_for("main.index"))
+
+    # Recollections are required and student marks are optional, but the
+    # generator draws no distinction between them.
+    one_time_dates: dict[str, date] = {**recollection_dates, **student_marked}
+
     # Build calendar
     try:
         validate_recollection_dates(events, recollection_dates)
-        ics_content = build_ics(events, term_start, weeks, recollection_dates=recollection_dates)
+        validate_one_time_dates(events, student_marked)
+        ics_content = build_ics(events, term_start, weeks, one_time_dates=one_time_dates)
     except ValueError as exc:
         if wants_json:
             return json_error(str(exc))

@@ -31,6 +31,7 @@ SAMPLE_EVENT = Event(
     code="LASCS11",
     title="LASCS11 L01",
     course_name="COMPUTER SCIENCE FUNDAMENTALS",
+    course_type="Lecture",
     day="MON",
     start_time="7:30 AM",
     end_time="9:00 AM",
@@ -234,3 +235,120 @@ def test_expired_download_token_still_redirects_plain_navigation(client):
 
     assert response.status_code == 302
     assert response.headers["Location"].endswith("/")
+
+
+SEMINAR_EVENT = Event(
+    code="SAS2000",
+    title="SAS2000 C02",
+    course_name="STUDENT AFFAIRS SERVICES",
+    course_type="Seminar / Workshop",
+    day="WED",
+    start_time="08:00 AM",
+    end_time="11:00 AM",
+    location="L209",
+)
+
+PARSED_WITH_SEMINAR = ParsedEAF(
+    events=[SAMPLE_EVENT, SEMINAR_EVENT],
+    ambiguous_rows=[],
+    suggested_filename="12345678_T1_AY24-25_Schedule.ics",
+)
+
+
+class TestOneTimeSessions:
+    def test_inspect_offers_the_seminar_and_not_the_lecture(self, client):
+        """The hint reaches the UI, so it can ask rather than assume."""
+        with patch("app.routes.parse_eaf_pdf", return_value=PARSED_WITH_SEMINAR), \
+             patch("app.routes.validate_pdf_file", return_value=(True, "")):
+            resp = client.post(
+                "/inspect",
+                data={"eaf_pdf": _fake_pdf()},
+                content_type="multipart/form-data",
+            )
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert body["one_time_candidates"] == {"SAS2000": ["WED"]}
+
+    def test_a_marked_course_is_generated_as_a_single_session(self, client):
+        with patch("app.routes.parse_eaf_pdf", return_value=PARSED_WITH_SEMINAR), \
+             patch("app.routes.validate_pdf_file", return_value=(True, "")):
+            gen_resp = client.post(
+                "/generate",
+                data={
+                    "eaf_pdf": _fake_pdf(),
+                    "term_start": "2025-08-25",
+                    "weeks": "14",
+                    "one_time_date_SAS2000": "2025-08-27",
+                },
+                content_type="multipart/form-data",
+                headers={"Accept": "application/json"},
+            )
+        assert gen_resp.status_code == 200
+        ics = client.get(gen_resp.get_json()["download_url"]).get_data(as_text=True)
+
+        seminar = [b for b in ics.split("BEGIN:VEVENT") if "SAS2000" in b]
+        assert len(seminar) == 1
+        assert "RRULE" not in seminar[0]
+        assert "20250827" in seminar[0]
+
+    def test_an_unmarked_course_still_repeats_weekly(self, client):
+        """Unchecked is the default, and the default must not lose classes."""
+        with patch("app.routes.parse_eaf_pdf", return_value=PARSED_WITH_SEMINAR), \
+             patch("app.routes.validate_pdf_file", return_value=(True, "")):
+            gen_resp = client.post(
+                "/generate",
+                data={
+                    "eaf_pdf": _fake_pdf(),
+                    "term_start": "2025-08-25",
+                    "weeks": "14",
+                },
+                content_type="multipart/form-data",
+                headers={"Accept": "application/json"},
+            )
+        assert gen_resp.status_code == 200
+        ics = client.get(gen_resp.get_json()["download_url"]).get_data(as_text=True)
+
+        seminar = [b for b in ics.split("BEGIN:VEVENT") if "SAS2000" in b]
+        assert len(seminar) == 1
+        assert "RRULE" in seminar[0]
+
+    def test_a_bad_one_time_date_is_refused_not_ignored(self, client):
+        """Silently dropping it would repeat a session the student said was once."""
+        with patch("app.routes.parse_eaf_pdf", return_value=PARSED_WITH_SEMINAR), \
+             patch("app.routes.validate_pdf_file", return_value=(True, "")):
+            resp = client.post(
+                "/generate",
+                data={
+                    "eaf_pdf": _fake_pdf(),
+                    "term_start": "2025-08-25",
+                    "weeks": "14",
+                    "one_time_date_SAS2000": "not-a-date",
+                },
+                content_type="multipart/form-data",
+                headers={"Accept": "application/json"},
+            )
+        assert resp.status_code == 400
+        assert "SAS2000" in resp.get_json()["error"]
+
+    def test_a_one_time_date_must_fall_on_the_scheduled_weekday(self, client):
+        """SAS2000 meets on a Wednesday, so a Thursday date is a typo.
+
+        The student is the authority on whether a course meets once. They are
+        not the authority on which weekday the EAF printed, so a mismatch is
+        worth catching before it reaches a calendar.
+        """
+        with patch("app.routes.parse_eaf_pdf", return_value=PARSED_WITH_SEMINAR), \
+             patch("app.routes.validate_pdf_file", return_value=(True, "")):
+            resp = client.post(
+                "/generate",
+                data={
+                    "eaf_pdf": _fake_pdf(),
+                    "term_start": "2025-08-25",
+                    "weeks": "14",
+                    "one_time_date_SAS2000": "2025-08-28",  # a Thursday
+                },
+                content_type="multipart/form-data",
+                headers={"Accept": "application/json"},
+            )
+        assert resp.status_code == 400
+        assert "Wednesday" in resp.get_json()["error"]

@@ -42,6 +42,30 @@ function getSelectedWeekday(dateValue: string) {
   return WEEKDAY_LABELS[new Date(year, month - 1, day).getDay()];
 }
 
+/**
+ * First date on or after `start` that falls on `dayCode`, as YYYY-MM-DD.
+ *
+ * This is the date the weekly branch would have used for its first event, so
+ * ticking the box moves a session the student already had rather than
+ * inventing one somewhere new.
+ */
+function firstOccurrenceOnOrAfter(start: string, dayCode: string) {
+  const target = WEEKDAY_LABELS.indexOf(dayCode.toUpperCase());
+  const [year, month, day] = start.split("-").map(Number);
+  if (target < 0 || !year || !month || !day) {
+    return "";
+  }
+
+  const cursor = new Date(year, month - 1, day);
+  if (Number.isNaN(cursor.getTime())) {
+    return "";
+  }
+
+  cursor.setDate(cursor.getDate() + ((target - cursor.getDay() + 7) % 7));
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return `${cursor.getFullYear()}-${pad(cursor.getMonth() + 1)}-${pad(cursor.getDate())}`;
+}
+
 /** Join weekday codes into prose: "Tuesday", "Tuesday or Thursday". */
 function formatWeekdayList(days: string[]) {
   const names = days.map((day) => WEEKDAY_NAMES[day.toUpperCase()] ?? day);
@@ -149,6 +173,17 @@ type RecollectionField = {
 };
 
 /**
+ * A course the server thinks might meet only once, and the weekdays the EAF
+ * printed for it. A suggestion the student answers, never a decision: leaving
+ * it alone keeps the weekly recurrence.
+ */
+type OneTimeCandidate = {
+  code: string;
+  name: string;
+  days: string[];
+};
+
+/**
  * A parse failure means the file itself cannot be used, so the form is
  * replaced. A submit failure leaves the form standing and offers a retry.
  * `kind` decides the heading: blaming the PDF for a dropped connection sends
@@ -242,6 +277,7 @@ export default function App() {
     termStartDate?: string;
     numWeeks?: string;
     recollections?: Record<string, string>;
+    oneTimeSessions?: Record<string, string>;
   }>({});
   // The uploaded file cannot be used at all - replaces the form.
   const [parseError, setParseError] = useState<ParseError | null>(null);
@@ -253,6 +289,9 @@ export default function App() {
   const [acknowledgedMissingRows, setAcknowledgedMissingRows] = useState(false);
   const [reportCopied, setReportCopied] = useState(false);
   const [recollectionFields, setRecollectionFields] = useState<RecollectionField[]>([]);
+  const [oneTimeCandidates, setOneTimeCandidates] = useState<OneTimeCandidate[]>([]);
+  const [oneTimeChecked, setOneTimeChecked] = useState<Record<string, boolean>>({});
+  const [oneTimeDates, setOneTimeDates] = useState<Record<string, string>>({});
   const [inspectedEvents, setInspectedEvents] = useState<InspectedEvent[]>([]);
   const [generatedFilename, setGeneratedFilename] = useState("eaf-calendar.ics");
   const [downloadUrl, setDownloadUrl] = useState("");
@@ -285,6 +324,17 @@ export default function App() {
   };
 
   const hasLasallianRecollection = recollectionFields.length > 0;
+  const hasOneTimeCandidates = oneTimeCandidates.length > 0;
+
+  /**
+   * The date a ticked session lands on: the student's own choice if they made
+   * one, otherwise the first occurrence after the term start they entered two
+   * fields up. Derived rather than stored, so correcting the term start moves
+   * an untouched date with it instead of leaving a stale one behind.
+   */
+  const oneTimeDateFor = (candidate: OneTimeCandidate) =>
+    oneTimeDates[candidate.code]
+    || firstOccurrenceOnOrAfter(termStartDate, candidate.days[0] ?? "");
 
   // Each scroll timer is cleared on re-run: uploading twice in quick succession
   // otherwise queues two competing smooth scrolls.
@@ -438,6 +488,9 @@ export default function App() {
     setReportCopied(false);
     setRecollectionFields([]);
     setRecollectionDates({});
+    setOneTimeCandidates([]);
+    setOneTimeChecked({});
+    setOneTimeDates({});
     setInspectedEvents([]);
     setGeneratedFilename(selectedFile.name.replace(/\.pdf$/i, ".ics"));
     setDownloadUrl("");
@@ -489,6 +542,21 @@ export default function App() {
       setRecollectionFields(fields);
       setRecollectionDates(Object.fromEntries(fields.map((field) => [field.code, ""])));
 
+      // Courses to ASK about. Unticked by default: the app does not know
+      // whether these meet once, and guessing wrong would drop real classes.
+      const oneTimeDays = (payload.one_time_candidates ?? {}) as Record<string, string[]>;
+      setOneTimeCandidates(
+        Object.keys(oneTimeDays)
+          .sort()
+          .map((code) => ({
+            code,
+            name: events.find((event) => event.code === code)?.course_name ?? code,
+            days: oneTimeDays[code].map((day) => day.toUpperCase()),
+          })),
+      );
+      setOneTimeChecked({});
+      setOneTimeDates({});
+
       const courseCount = payload.course_count ?? 0;
       const unreadable = Array.isArray(payload.ambiguous_rows) ? payload.ambiguous_rows.length : 0;
       setStatusMessage(
@@ -527,6 +595,9 @@ export default function App() {
     setNumWeeks("14");
     setRecollectionDates({});
     setRecollectionFields([]);
+    setOneTimeCandidates([]);
+    setOneTimeChecked({});
+    setOneTimeDates({});
     setValidationErrors({});
     setParseError(null);
     setSubmitError(null);
@@ -563,6 +634,7 @@ export default function App() {
       termStartDate?: string;
       numWeeks?: string;
       recollections?: Record<string, string>;
+    oneTimeSessions?: Record<string, string>;
     } = {};
 
     if (!termStartDate) {
@@ -599,6 +671,31 @@ export default function App() {
       errors.recollections = recollectionErrors;
     }
 
+    // Only ticked sessions are checked. An unticked one has no date to be
+    // wrong about, which is the point of the default.
+    const oneTimeErrors: Record<string, string> = {};
+    oneTimeCandidates.forEach((candidate) => {
+      if (!oneTimeChecked[candidate.code]) {
+        return;
+      }
+
+      const selected = oneTimeDateFor(candidate);
+      if (!selected) {
+        oneTimeErrors[candidate.code] = "Choose the date this session takes place.";
+        return;
+      }
+
+      const weekday = getSelectedWeekday(selected);
+      if (weekday && !candidate.days.includes(weekday)) {
+        oneTimeErrors[candidate.code] =
+          `${candidate.code} is scheduled on ${formatWeekdayList(candidate.days)}. Please choose a ${formatWeekdayList(candidate.days)} date.`;
+      }
+    });
+
+    if (Object.keys(oneTimeErrors).length > 0) {
+      errors.oneTimeSessions = oneTimeErrors;
+    }
+
     if (ambiguousRows.length > 0 && !acknowledgedMissingRows) {
       errors.acknowledgeRows =
         "Confirm you understand these classes will be missing before creating the schedule.";
@@ -625,6 +722,11 @@ export default function App() {
     formData.append("weeks", numWeeks);
     recollectionFields.forEach((field) => {
       formData.append(`recollection_date_${field.code}`, recollectionDates[field.code] ?? "");
+    });
+    oneTimeCandidates.forEach((candidate) => {
+      if (oneTimeChecked[candidate.code]) {
+        formData.append(`one_time_date_${candidate.code}`, oneTimeDateFor(candidate));
+      }
     });
 
     setIsGenerating(true);
@@ -1134,6 +1236,79 @@ export default function App() {
                           hint={weekdayHint ? `${field.code} falls on a ${weekdayHint}.` : undefined}
                           error={fieldError}
                         />
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {hasOneTimeCandidates && (
+                <div className="border-t border-gray-200/50 dark:border-slate-600/30 pt-8">
+                  <div className="space-y-2 mb-6">
+                    <h3 className="text-lg text-foreground">One-time sessions</h3>
+                    <p className="text-sm text-muted-foreground">
+                      Orientations and seminars sometimes meet once instead of every
+                      week. Tick any that meet only once and pick the date. Leave them
+                      alone and they repeat weekly, like the rest of your schedule.
+                    </p>
+                  </div>
+
+                  <div className="space-y-6">
+                    {oneTimeCandidates.map((candidate) => {
+                      const checked = oneTimeChecked[candidate.code] ?? false;
+                      const weekdayHint = formatWeekdayList(candidate.days);
+
+                      return (
+                        <div key={candidate.code} className="space-y-3">
+                          <label
+                            className="flex items-start gap-3 cursor-pointer"
+                            htmlFor={`one-time-toggle-${candidate.code}`}
+                          >
+                            <input
+                              id={`one-time-toggle-${candidate.code}`}
+                              type="checkbox"
+                              className="mt-1 h-4 w-4 shrink-0 cursor-pointer accent-primary"
+                              checked={checked}
+                              onChange={(event) =>
+                                setOneTimeChecked((current) => ({
+                                  ...current,
+                                  [candidate.code]: event.target.checked,
+                                }))
+                              }
+                            />
+                            <span className="text-sm">
+                              <span className="text-foreground">
+                                {formatCourseName(candidate.name)}
+                              </span>
+                              <span className="block text-muted-foreground">
+                                {candidate.code} meets only once
+                              </span>
+                            </span>
+                          </label>
+
+                          {/* The date only appears once the student has said the
+                              session is one-time, so an untouched course shows no
+                              field to answer and nothing to get wrong. */}
+                          {checked && (
+                            <div className="pl-7 sm:max-w-xs">
+                              <Field
+                                id={`one-time-date-${candidate.code}`}
+                                type="date"
+                                label="Date"
+                                required
+                                value={oneTimeDateFor(candidate)}
+                                onChange={(value) =>
+                                  setOneTimeDates((current) => ({
+                                    ...current,
+                                    [candidate.code]: value,
+                                  }))
+                                }
+                                hint={weekdayHint ? `${candidate.code} falls on a ${weekdayHint}.` : undefined}
+                                error={validationErrors.oneTimeSessions?.[candidate.code]}
+                              />
+                            </div>
+                          )}
+                        </div>
                       );
                     })}
                   </div>

@@ -20,6 +20,21 @@ RECOLLECTION_TITLES = {
     "LASARE3": "LASARE3 - LASALLIAN RECOLLECTION 3",
 }
 
+# Course types whose meetings are often a single session rather than a weekly
+# class: orientations, seminars, practicum briefings. This drives nothing on its
+# own. It only decides which courses are OFFERED a one-time checkbox, which the
+# student then answers. Being wrong here costs a prompt that should not have
+# appeared, or one that should have and did not - never a wrong calendar.
+#
+# Deliberately not a list of course codes. Every program has its own orientation
+# code, and a code list would only grow when a student's calendar was already
+# wrong. See RECOLLECTION_TITLES above for the version of that mistake we still
+# carry.
+ONE_TIME_COURSE_TYPES = {
+    "Seminar / Workshop",
+    "Practicum / Internship",
+}
+
 # Day Mappings
 DAY_TO_WEEKDAY = {
     "MON": 0,
