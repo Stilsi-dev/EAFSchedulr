@@ -52,16 +52,23 @@ export function AmbiguousRowList({ groups, tone }: AmbiguousRowListProps) {
   return (
     <div className="space-y-4">
       {groups.map((group) => (
-        <div key={group.code} className={cn("rounded-2xl border bg-card-well p-4", styles.group)}>
-          <p className={cn("mb-3 text-base font-semibold", styles.code)}>{group.code}</p>
+        <div key={group.code} className={cn("rounded-2xl border bg-card-well p-3 sm:p-4", styles.group)}>
+          <p className={cn("mb-3 text-base font-semibold [overflow-wrap:anywhere]", styles.code)}>{group.code}</p>
           <div className="space-y-3">
             {group.rows.map((row) => (
               <div
                 key={`${group.code}-${row.row_number}`}
-                className={cn("rounded-xl border p-3", styles.row)}
+                className={cn("rounded-xl border p-2.5 sm:p-3", styles.row)}
               >
                 <p className={cn("text-sm font-medium tabular-nums", styles.code)}>Row {row.row_number}</p>
-                <p className={cn("mt-1 max-w-[70ch] text-sm leading-relaxed whitespace-pre-wrap", styles.text)}>
+                {/* The whole point of this list is text the parser could not read, so
+                    it arrives malformed by definition - and the classic drift
+                    artifact is columns concatenated into one long run with no
+                    spaces in it. `pre-wrap` alone only breaks on whitespace, so
+                    a single 90-character token pushed the page 489px sideways on
+                    a phone. `anywhere` also lowers the min-content width, which
+                    is what stops the row from widening its container. */}
+                <p className={cn("mt-1 max-w-[70ch] text-sm leading-relaxed whitespace-pre-wrap [overflow-wrap:anywhere]", styles.text)}>
                   {row.text}
                 </p>
                 <p className={cn("mt-2 text-xs leading-relaxed", styles.reason)}>{row.reason}</p>

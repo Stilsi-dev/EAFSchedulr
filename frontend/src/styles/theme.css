@@ -161,6 +161,29 @@
     @apply bg-background text-foreground;
   }
 
+  /* The surfaces we did not draw.
+     Selection, the caret, native control accents and the scrollbar all ship
+     with browser defaults that belong to no design system: a blue highlight
+     and a grey bar, identical in both themes and unrelated to anything else on
+     the page. They are cheap to claim and conspicuous when nobody does.
+
+     Selection is tinted from the ring rather than the brand green at full
+     strength, so highlighted text stays readable instead of being reversed
+     out; the foreground is pinned rather than inherited because the default
+     pairing is computed against a highlight we just replaced. The scrollbar is
+     drawn from the foreground, not the accent - it borders every scroll of the
+     page, and an emerald bar there would be the loudest thing on screen. */
+  ::selection {
+    background-color: color-mix(in oklab, var(--ring) 22%, transparent);
+    color: var(--strong-foreground);
+  }
+
+  html {
+    caret-color: var(--ring);
+    accent-color: var(--ring);
+    scrollbar-color: color-mix(in oklab, var(--foreground) 28%, transparent) transparent;
+  }
+
   /**
   * Default typography styles for HTML elements (h1-h4, p, label, button, input).
   * These are in @layer base, so Tailwind utility classes (like text-sm, text-lg) automatically override them.

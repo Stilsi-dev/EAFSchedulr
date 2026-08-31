@@ -63,8 +63,8 @@ export function Alert({
         "border backdrop-blur-xl",
         styles.shell,
         isPanel
-          ? cn("rounded-3xl p-6 shadow-xl sm:p-8", styles.shadow)
-          : "rounded-2xl p-5 duration-200 animate-in fade-in slide-in-from-top-2",
+          ? cn("rounded-3xl p-4 shadow-xl sm:p-6 lg:p-8", styles.shadow)
+          : "rounded-2xl p-4 duration-200 animate-in fade-in slide-in-from-top-2 sm:p-5",
         className,
       )}
     >

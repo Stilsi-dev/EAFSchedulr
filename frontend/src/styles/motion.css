@@ -49,6 +49,41 @@
   animation: seal-bloom 900ms var(--ease-out-expo) both;
 }
 
+/* --- The dialog ----------------------------------------------------------
+   Not a second authored moment. The seal keeps that job; this is the same
+   state-explaining work every other transition here does - the panel arrives
+   from slightly below as the ground darkens, so it reads as opening rather
+   than as the page having been replaced between frames. Short enough that a
+   student tapping through never waits on it. */
+
+@keyframes dialog-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes dialog-backdrop-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+dialog[open] {
+  animation: dialog-in 220ms var(--ease-out-expo) both;
+}
+
+dialog[open]::backdrop {
+  animation: dialog-backdrop-in 220ms var(--ease-out-expo) both;
+}
+
 /* --- Reduced motion -------------------------------------------------------
    Spatial movement goes; meaning stays. Entrances resolve immediately at their
    final position rather than being hidden, hover lifts stop lifting while their
@@ -100,5 +135,11 @@
   /* Progress stays legible but slows to a gentle fade rather than a throb. */
   .animate-pulse {
     animation-duration: 3s;
+  }
+
+  /* The dialog still appears; it just stops travelling to get there. */
+  dialog[open],
+  dialog[open]::backdrop {
+    animation: none;
   }
 }
