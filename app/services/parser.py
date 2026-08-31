@@ -47,11 +47,47 @@ class ParsedEAF:
 # boundary - which still leaves a row with no type at all failing, as it should.
 COURSE_TYPE = r"[A-Z][a-z]+(?:\s*/\s*[A-Z][a-z]+|\s+[A-Z][a-z]+)*"
 
-COURSE_ROW_PATTERN = re.compile(
-    r"^\d+\s+([A-Z0-9]+)-(.+?)\s+"
-    rf"({COURSE_TYPE})\s+"
-    r"([A-Z0-9]+)\s+([\d.]+)\s+(.*)$"
+# The row grammar in order, named so a failure can say which field it stopped
+# at. Matcher and diagnostic are both built from this one tuple: a second copy
+# of the grammar would drift, and a reason naming the wrong field is worse than
+# the flat "bad row" it replaces.
+#
+# Type and credits are deliberately non-capturing. Nothing reads either, and a
+# title-case run absorbs an unknown neighbouring column silently - harmless
+# only while the field stays unread, and every row still parses correctly when
+# it happens. Reading the type has to be a deliberate edit here rather than an
+# available group number.
+COURSE_ROW_FIELDS: tuple[tuple[str, str], ...] = (
+    ("course number", r"^\d+\s+"),
+    ("course code", r"(?P<code>[A-Z0-9]+)-"),
+    ("course name", r"(?P<name>.+?)\s+"),
+    ("course type", rf"(?:{COURSE_TYPE})\s+"),
+    ("section", r"(?P<section>[A-Z0-9]+)\s+"),
+    ("credits", r"(?:[\d.]+)\s+"),
+    ("schedule", r"(?P<schedule>.*)$"),
 )
+
+COURSE_ROW_PATTERN = re.compile("".join(fragment for _, fragment in COURSE_ROW_FIELDS))
+
+# Cumulative prefixes of the same grammar; the first that fails is the field to
+# name.
+COURSE_ROW_PROBES: tuple[tuple[str, re.Pattern[str]], ...] = tuple(
+    (field, re.compile("".join(f for _, f in COURSE_ROW_FIELDS[: index + 1])))
+    for index, (field, _) in enumerate(COURSE_ROW_FIELDS)
+)
+
+
+def describe_course_row_failure(row: str) -> str:
+    """Name the field a row stopped at.
+
+    The schedule failure already names the fragment it choked on; this is the
+    same courtesy for the row itself, so a report points at a field instead of
+    leaving the row to be re-derived by hand.
+    """
+    for field, probe in COURSE_ROW_PROBES:
+        if probe.match(row) is None:
+            return f"Could not identify the {field} in this row."
+    return "The row did not match the expected course format."
 
 # The location group excludes `|` deliberately. With `[^,]*` a new
 # pipe-delimited column (e.g. a modality field) would be absorbed into the
@@ -204,15 +240,15 @@ def parse_eaf_text(text: str) -> ParsedEAF:
                     code=code_match.group(1) if code_match else "UNKNOWN",
                     row_number=row_number,
                     text=row,
-                    reason="The row did not match the expected course format.",
+                    reason=describe_course_row_failure(row),
                 )
             )
             continue
 
-        code = normalize_text(match.group(1))
-        course_name = normalize_text(match.group(2))
-        section = normalize_text(match.group(4))
-        schedule_text = normalize_text(match.group(6))
+        code = normalize_text(match["code"])
+        course_name = normalize_text(match["name"])
+        section = normalize_text(match["section"])
+        schedule_text = normalize_text(match["schedule"])
         title = f"{code} {section}"
 
         schedule_segments = [segment.strip() for segment in schedule_text.split(",") if segment.strip()]

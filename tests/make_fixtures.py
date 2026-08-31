@@ -43,6 +43,9 @@ SAMPLES: dict[str, tuple[str, str]] = {
     "sample-bsece.pdf": ("bsece_lasare3_wed_tba", "11900002"),
     "sample-cs.pdf": ("cs_lasare3_wed", "11900003"),
     "sample-cpe.pdf": ("cpe_lasare3_wed", "11900004"),
+    # The form that surfaced "Practicum / Internship". Drop the PDF in to
+    # generate it; until then this entry skips.
+    "sample-bsit.pdf": ("bsit_practicum_sat", "11900005"),
 }
 
 COURSE_ROW_START = re.compile(r"^\d+\s+[A-Z0-9]+-")

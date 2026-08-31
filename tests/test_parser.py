@@ -212,3 +212,35 @@ def test_row_with_no_course_type_at_all_is_still_flagged():
     assert parsed.events == []
     assert len(parsed.ambiguous_rows) == 1
     assert parsed.ambiguous_rows[0].code == "CSSWENG"
+
+
+def test_failure_names_the_field_it_stopped_at():
+    """A report should point at a field, not hand back the row to re-derive.
+
+    This is the reason the PRCCC01 report carried, and it cost a read of the
+    whole row to work out that the course type was the problem.
+    """
+    parsed = parse_eaf_text(
+        "Sr.No Course Course Type Section Credits Day/Time/Room" + chr(10) +
+        "1 CSSWENG-SOFTWARE ENGINEERING S01 3.00 MON | 09:15 AM-10:45 AM | G206" + chr(10)
+    )
+    assert len(parsed.ambiguous_rows) == 1
+    assert parsed.ambiguous_rows[0].reason == "Could not identify the course type in this row."
+
+
+def test_the_diagnostic_cannot_name_a_field_the_matcher_lacks():
+    """Both are built from COURSE_ROW_FIELDS, and this is what keeps them so.
+
+    A hand-maintained probe table would drift from the pattern and start
+    naming the wrong field, which is worse than saying nothing useful.
+    """
+    from app.services.parser import (
+        COURSE_ROW_FIELDS,
+        COURSE_ROW_PATTERN,
+        COURSE_ROW_PROBES,
+    )
+
+    assert [f for f, _ in COURSE_ROW_PROBES] == [f for f, _ in COURSE_ROW_FIELDS]
+    assert COURSE_ROW_PROBES[-1][1].pattern == COURSE_ROW_PATTERN.pattern
+    # Type and credits carry no group: reading them must be a deliberate edit.
+    assert set(COURSE_ROW_PATTERN.groupindex) == {"code", "name", "section", "schedule"}
