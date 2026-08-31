@@ -2,7 +2,7 @@
 
 `remote_addr` is whatever address opened the TCP connection, which behind a
 PaaS router is the router. Left uncorrected, every student lands in the same
-bucket and the 20/min cap on the upload endpoints throttles the entire site at
+bucket and the per-client cap on the upload endpoints throttles the whole site
 once. These tests send requests the way the real chain does, so they fail if
 either correction (ProxyFix, or the Cloudflare header) is removed.
 """

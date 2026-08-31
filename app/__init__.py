@@ -71,7 +71,7 @@ def create_app() -> Flask:
 
 		# Behind a hosting platform's router, `request.remote_addr` is the
 		# router's address, not the student's. Every request then hashes to the
-		# same rate-limit bucket, so the 20/min cap on /inspect and /generate
+		# same rate-limit bucket, so the cap on /inspect and /generate
 		# applies to the whole site at once rather than per student. ProxyFix
 		# rewrites remote_addr from X-Forwarded-For so the cap means what the
 		# decorator says it means.
@@ -213,7 +213,16 @@ def create_app() -> Flask:
 		# effective level hides it and format drift stays invisible in prod.
 		app.logger.setLevel(logging.INFO)
 
-		# Rate limiting: 20 PDF uploads/minute per IP on the heavy endpoints
+		# Rate limiting on the heavy endpoints: 60 uploads/minute per client.
+		# Sized for a shared address, not a single student. DLSU campus wifi
+		# puts a whole building behind one public IP, and term start is exactly
+		# when a lecture hall opens this at once; 20 would have meant one upload
+		# every three seconds for all of them together.
+		#
+		# No site-wide `default_limits` on purpose. A global cap answers 429 to
+		# everyone at once, which is the failure this keying was fixed to stop.
+		# Overload is absorbed by the worker queueing requests, which delays a
+		# student rather than refusing them.
 		limiter.init_app(app)
 
 		# Register routes

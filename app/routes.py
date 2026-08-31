@@ -72,7 +72,7 @@ def index():
 
 
 @bp.post("/inspect")
-@limiter.limit("20 per minute")
+@limiter.limit("60 per minute")
 def inspect() -> Any:
     """Inspect uploaded PDF and return course and recollection info.
     
@@ -145,7 +145,7 @@ def inspect() -> Any:
 
 
 @bp.post("/generate")
-@limiter.limit("20 per minute")
+@limiter.limit("60 per minute")
 def generate() -> Any:
     """Generate calendar file from uploaded EAF PDF.
     
