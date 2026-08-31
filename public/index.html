@@ -13,24 +13,31 @@
 
       The theme lives in a React `useEffect`, which cannot run until the whole
       bundle has downloaded, parsed and mounted. Until then `<html>` has no
-      `.dark` class, so a student who chose dark mode was served the light
-      ground for the entire boot - measured at ~1.6s on a throttled phone - and
-      then watched it flip. Reading the same key here settles the question
-      before the first pixel.
+      `.dark` class, so a student on a dark machine was served the light ground
+      for the entire boot - measured at ~1.6s on a throttled phone - and then
+      watched it flip. Resolving it here settles the question before the first
+      pixel.
 
-      Kept deliberately tiny and dependency-free: it blocks the parser, so
-      every byte is on the critical path. The key and its JSON encoding must
-      match the `darkMode` reads and writes in App.tsx.
+      Same three states as theme.ts: a stored `light` or `dark` is an explicit
+      choice and wins outright, and anything else means no choice was ever made
+      and the operating system decides. Kept deliberately tiny and
+      dependency-free, because it blocks the parser and every byte is on the
+      critical path. The key and its values must match theme.ts.
     -->
     <script>
       (function () {
+        var saved = null;
         try {
-          var saved = localStorage.getItem('darkMode');
-          if (saved && JSON.parse(saved)) {
-            document.documentElement.classList.add('dark');
-          }
+          saved = localStorage.getItem('themePreference');
         } catch (e) {
-          /* Private mode or blocked storage: light is the documented default. */
+          /* Private mode or blocked storage: the OS is the only preference. */
+        }
+        var dark =
+          saved === 'light' || saved === 'dark'
+            ? saved === 'dark'
+            : window.matchMedia('(prefers-color-scheme: dark)').matches;
+        if (dark) {
+          document.documentElement.classList.add('dark');
         }
       })();
     </script>
@@ -69,43 +76,69 @@
     </style>
 
     <!--
-      Google Analytics, moved off the critical path.
+      Google Analytics, off until asked and off the critical path.
 
+      Nothing here contacts Google until the student says yes. `gtag.js` is not
+      fetched, `dataLayer` is never touched and no cookie is set, so a student
+      who ignores the consent bar - most of them, in a product used once a
+      term - leaves no trace with a third party. That is the entire point of
+      the bar in ConsentBanner.tsx: one that gated nothing would be worse than
+      shipping none at all.
+
+      Two entry points, both called from analytics.ts:
+
+        __eafAnalytics.enable()    the student accepted
+        __eafAnalytics.disable()   the student changed their mind
+
+      `disable()` has to bite mid-session. A student who accepts, uses the app,
+      then switches analytics off in the Privacy Notice would otherwise keep
+      being measured for the rest of their only visit - there is no next visit
+      for a stored preference to take effect on. So it sets Google's documented
+      `ga-disable-<id>` kill switch, which gtag.js consults at send time, and
+      clears the cookies, rather than only writing to localStorage.
+
+      Timing applies solely to consent already stored from a previous visit.
       Loading gtag.js from `<head>` cost a measured 1072ms of First Contentful
       Paint and every millisecond of Total Blocking Time (261ms) on a throttled
       phone: it competes with the app bundle for both the connection and the
       main thread, and the student is looking at nothing at all while it wins.
+      The delay is a floor, not a guess - `load` alone fires while React is
+      still mounting, so idle time exists but the app has not settled into it,
+      and scheduling there just moved gtag.js's ~250ms of parsing from before
+      first paint to on top of it. Waiting past the point where the student can
+      act, then asking for idle, keeps it out of both.
 
-      The commands are still queued here, synchronously, with their real
-      timestamps - `gtag()` only pushes onto `dataLayer`, which costs nothing.
-      Only the fetch and execution are deferred, and gtag.js replays the queue
-      when it arrives, so the pageview is not lost.
+      A fresh `enable()` skips all of it and loads at once. The student has
+      just read the bar and clicked it, so the page settled long ago, there is
+      no first paint left to protect, and an idle callback could only lose the
+      visit if they close the tab inside its window.
 
-      The delay is a floor, not a guess. `load` alone fires while React is
-      still mounting, so idle time exists but the app has not settled into it -
-      scheduling there just moved gtag.js's ~250ms of parsing from before first
-      paint to on top of it. Waiting past the point where the student can act,
-      then asking for idle, keeps it out of both.
+      The key and its values must match the `analyticsConsent` reads and writes
+      in analytics.ts. Unlike `darkMode` it is stored as a bare string rather
+      than JSON, because it has three states and not two: a missing key means
+      unasked, and only the React side needs to tell that from a real 'denied'.
     -->
     <script>
-      window.dataLayer = window.dataLayer || [];
-      function gtag(){dataLayer.push(arguments);}
-      gtag('js', new Date());
-      gtag('config', 'G-LEEDEK781L');
-
       (function () {
+        var GA_ID = 'G-LEEDEK781L';
         var loaded = false;
 
         function loadGtag() {
           if (loaded) return;
           loaded = true;
+
+          window.dataLayer = window.dataLayer || [];
+          window.gtag = function () { dataLayer.push(arguments); };
+          gtag('js', new Date());
+          gtag('config', GA_ID);
+
           var s = document.createElement('script');
           s.async = true;
-          s.src = 'https://www.googletagmanager.com/gtag/js?id=G-LEEDEK781L';
+          s.src = 'https://www.googletagmanager.com/gtag/js?id=' + GA_ID;
           document.head.appendChild(s);
         }
 
-        function schedule() {
+        function scheduleAfterBoot() {
           setTimeout(function () {
             if ('requestIdleCallback' in window) {
               // The timeout is the backstop: on a page the student never
@@ -117,18 +150,52 @@
           }, 2000);
         }
 
-        if (document.readyState === 'complete') {
-          schedule();
-        } else {
-          addEventListener('load', schedule, { once: true });
+        /* GA writes to the broadest domain it can reach, which is not always
+           the host serving the page, so expiring the exact hostname alone can
+           leave the cookie standing. */
+        function clearCookie(name) {
+          var parts = location.hostname.split('.');
+          var stale = '=; expires=Thu, 01 Jan 1970 00:00:01 GMT; path=/';
+
+          document.cookie = name + stale;
+          for (var i = 0; i < parts.length - 1; i++) {
+            document.cookie = name + stale + '; domain=.' + parts.slice(i).join('.');
+          }
+        }
+
+        window.__eafAnalytics = {
+          enable: function () {
+            /* Cleared as well as set, so accept-then-decline-then-accept in one
+               sitting does not leave a silenced tag looking like a live one. */
+            window['ga-disable-' + GA_ID] = false;
+            loadGtag();
+          },
+          disable: function () {
+            window['ga-disable-' + GA_ID] = true;
+            /* GA4's session cookie is the measurement id without its `G-`. */
+            clearCookie('_ga');
+            clearCookie('_ga_' + GA_ID.slice(2));
+          }
+        };
+
+        try {
+          if (localStorage.getItem('analyticsConsent') === 'granted') {
+            if (document.readyState === 'complete') {
+              scheduleAfterBoot();
+            } else {
+              addEventListener('load', scheduleAfterBoot, { once: true });
+            }
+          }
+        } catch (e) {
+          /* Private mode or blocked storage: unasked, so nothing loads. */
         }
       })();
     </script>
-    <script type="module" crossorigin src="/assets/index-fFpwc-5f.js"></script>
-    <link rel="stylesheet" crossorigin href="/assets/index-B8yT0Vjc.css">
+    <script type="module" crossorigin src="/assets/index-COgOh6co.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-BVKFqYdy.css">
   </head>
 
   <body>
-    <div id="root"></div>
+    <div id="root"></div>
   </body>
 </html>

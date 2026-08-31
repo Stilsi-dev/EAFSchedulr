@@ -5,6 +5,17 @@ import { AmbiguousRowList } from "./components/ui/AmbiguousRowList";
 import { Field } from "./components/ui/Field";
 import { GlassCard } from "./components/ui/GlassCard";
 import { IconTile } from "./components/ui/IconTile";
+import { ConsentBanner } from "./components/ConsentBanner";
+import { PrivacyDialog, PRIVACY_SUMMARY } from "./components/PrivacyDialog";
+import { readConsent, writeConsent, type Consent } from "./analytics";
+import {
+  applyTheme,
+  DARK_QUERY,
+  prefersDark,
+  readPreference,
+  writePreference,
+  type ThemePreference,
+} from "./theme";
 
 const WEEKDAY_LABELS = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"];
 
@@ -249,18 +260,22 @@ export default function App() {
   const [generatedAt, setGeneratedAt] = useState("");
   const [isScheduleCreated, setIsScheduleCreated] = useState(false);
   const [showAllCourses, setShowAllCourses] = useState(false);
-  const [isDarkMode, setIsDarkMode] = useState(() => {
-    if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('darkMode');
-      return saved ? JSON.parse(saved) : false;
-    }
-    return false;
-  });
+  const [themePreference, setThemePreference] =
+    useState<ThemePreference>(readPreference);
+  const [systemPrefersDark, setSystemPrefersDark] = useState(prefersDark);
+  // Derived, never stored. A second piece of state for the resolved theme
+  // could disagree with the preference that produced it, and the bug that
+  // falls out of that is a toggle the page ignores.
+  const isDarkMode =
+    themePreference === "system" ? systemPrefersDark : themePreference === "dark";
+  const [analyticsConsent, setAnalyticsConsent] = useState<Consent>(readConsent);
+  const [isPrivacyOpen, setIsPrivacyOpen] = useState(false);
 
   const uploadSectionRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const scheduleDetailsRef = useRef<HTMLDivElement>(null);
   const successSectionRef = useRef<HTMLDivElement>(null);
+  const parseErrorRef = useRef<HTMLDivElement>(null);
 
   const resetFileInput = () => {
     if (fileInputRef.current) {
@@ -296,16 +311,74 @@ export default function App() {
     return () => clearTimeout(timer);
   }, [isScheduleCreated]);
 
+  /**
+   * A rejected file replaces the form with an explanation - roughly 1600px down
+   * the page on a phone. Every other state change here scrolls to what it
+   * produced; this one did not, because it scrolls to the schedule panel and a
+   * parse error is precisely the case where that panel does not exist. The
+   * student pressed upload, the page appeared to do nothing, and the reason sat
+   * two screens below the fold.
+   */
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('darkMode', JSON.stringify(isDarkMode));
-      if (isDarkMode) {
-        document.documentElement.classList.add('dark');
-      } else {
-        document.documentElement.classList.remove('dark');
-      }
+    if (!parseError) {
+      return;
     }
+
+    const timer = setTimeout(() => {
+      parseErrorRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [parseError]);
+
+  useEffect(() => {
+    applyTheme(isDarkMode);
   }, [isDarkMode]);
+
+  // Storage is written by the toggle, not here. An effect that saved on mount
+  // would turn every first visit into a permanent choice, which is exactly
+  // what keeps `system` from meaning anything.
+
+  // Subscribed only while following the system. A student who picked a theme
+  // should not have it pulled out from under them when their machine dims at
+  // sunset.
+  useEffect(() => {
+    if (themePreference !== "system") return;
+
+    const query = window.matchMedia(DARK_QUERY);
+    const sync = (event: MediaQueryListEvent) =>
+      setSystemPrefersDark(event.matches);
+
+    // Re-read on subscribe: the OS can flip between the first render and here.
+    setSystemPrefersDark(query.matches);
+    query.addEventListener("change", sync);
+    return () => query.removeEventListener("change", sync);
+  }, [themePreference]);
+
+  /**
+   * Stored and applied in the same breath. `writeConsent` reaches the loader in
+   * index.html, so switching analytics off silences a tag that is already
+   * running instead of waiting for a next visit that, once a term, never comes.
+   */
+  const handleConsent = (consent: "granted" | "denied") => {
+    writeConsent(consent);
+    setAnalyticsConsent(consent);
+  };
+
+  /**
+   * Reports whether it actually opened. Both triggers are real `#privacy`
+   * anchors, and only suppress their navigation when the dialog takes over -
+   * so a browser without `showModal` still gets the student to the notice
+   * rather than to nothing at all.
+   */
+  const openPrivacy = () => {
+    if (typeof HTMLDialogElement === "undefined" || !HTMLDialogElement.prototype.showModal) {
+      return false;
+    }
+
+    setIsPrivacyOpen(true);
+    return true;
+  };
 
   const handleDragOver = (e: DragEvent) => {
     e.preventDefault();
@@ -641,11 +714,32 @@ export default function App() {
   const hasMoreCourses = courseSummaries.length > 4;
   const remainingCourses = Math.max(0, courseSummaries.length - 4);
 
+  /* The consent bar floats over the page rather than displacing it, so the
+     page has to grow by its height for as long as it is up. Without this the
+     upload dropzone can sit underneath the bar on a short phone screen with no
+     way to scroll it clear. ConsentBanner measures itself and publishes the
+     variable; it is absent, and the fallback applies, whenever the bar is not
+     rendered. */
+  const consentBarInset = { paddingBottom: "var(--consent-bar-h, 0px)" };
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-emerald-50 via-white to-teal-50 dark:from-slate-950 dark:via-slate-900 dark:to-emerald-950/40 relative overflow-hidden transition-colors duration-300">
-      {/* Decorative background elements */}
-      <div className="absolute top-0 right-0 w-96 h-96 bg-emerald-200 dark:bg-emerald-500/20 rounded-full mix-blend-multiply dark:mix-blend-screen filter blur-3xl opacity-20 dark:opacity-30"></div>
-      <div className="absolute bottom-0 left-0 w-96 h-96 bg-teal-200 dark:bg-teal-500/20 rounded-full mix-blend-multiply dark:mix-blend-screen filter blur-3xl opacity-20 dark:opacity-30"></div>
+    <div
+      className="min-h-screen bg-gradient-to-br from-emerald-50 via-white to-teal-50 dark:from-slate-950 dark:via-slate-900 dark:to-emerald-950/40 relative transition-colors duration-300"
+      style={consentBarInset}
+    >
+      {/* Decorative background elements.
+          The clipping lives here, on the decoration, and not on the page root.
+          Two 384px circles carrying a 64px blur hang off opposite corners and
+          would otherwise push the page sideways, so something has to contain
+          them - but when `overflow-hidden` sat on the root it contained the
+          content too. At 200% text the headline was not wrapped or scrolled
+          but cut off, with no scrollbar to reach the rest: text resized, text
+          lost. Scoping it to a sibling layer keeps the circles in and lets
+          everything the student actually reads overflow honestly. */}
+      <div aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden">
+        <div className="absolute top-0 right-0 w-96 h-96 bg-emerald-200 dark:bg-emerald-500/20 rounded-full mix-blend-multiply dark:mix-blend-screen filter blur-3xl opacity-20 dark:opacity-30"></div>
+        <div className="absolute bottom-0 left-0 w-96 h-96 bg-teal-200 dark:bg-teal-500/20 rounded-full mix-blend-multiply dark:mix-blend-screen filter blur-3xl opacity-20 dark:opacity-30"></div>
+      </div>
 
       {/* Parsing, validation and generation all happen without a page change,
           so screen readers need them narrated. */}
@@ -653,8 +747,24 @@ export default function App() {
         {statusMessage}
       </div>
 
-      <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 sm:py-16 lg:py-20">
-        {/* Brand & Theme Toggle */}
+      {/* Ahead of every other focusable thing on the page, because the form
+          is a long way down and tabbing to it is the slowest way there. */}
+      <a
+        href="#main-content"
+        className="sr-only rounded-xl bg-primary px-4 py-3 text-primary-foreground shadow-lg outline-none focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:ring-2 focus:ring-ring"
+      >
+        Skip to the schedule
+      </a>
+
+      {/* Placed here, right behind the skip link, so a screen reader meets it
+          near the top of the page even though it paints at the bottom of the
+          viewport. Asked once: after an answer it never returns, and the
+          standing checkbox in the Privacy Notice takes over. */}
+      {analyticsConsent === "unset" && (
+        <ConsentBanner onDecide={handleConsent} onOpenPrivacy={openPrivacy} />
+      )}
+
+      <header className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-12 sm:pt-16 lg:pt-20">
         <div className="flex items-center justify-between mb-12 sm:mb-16">
           <div className="flex items-center gap-2">
             <img
@@ -667,9 +777,15 @@ export default function App() {
 
           {/* Dark Mode Toggle */}
           <button
-            onClick={() => setIsDarkMode(!isDarkMode)}
-            className="p-2.5 rounded-xl bg-white/60 dark:bg-slate-800/80 backdrop-blur-sm border border-gray-200 dark:border-emerald-500/30 hover:bg-white dark:hover:bg-slate-700/90 transition-all duration-200 shadow-md hover:shadow-lg dark:shadow-emerald-500/10 dark:hover:shadow-emerald-500/20"
-            aria-label="Toggle dark mode"
+            onClick={() => {
+              // The first tap leaves `system` for good. That is the trade the
+              // two-icon header buys: one obvious control, no hidden third stop.
+              const chosen = isDarkMode ? "light" : "dark";
+              setThemePreference(chosen);
+              writePreference(chosen);
+            }}
+            className="p-3 rounded-xl bg-white/60 dark:bg-slate-800/80 backdrop-blur-sm border border-gray-200 dark:border-emerald-500/30 hover:bg-white dark:hover:bg-slate-700/90 transition-all duration-200 shadow-md hover:shadow-lg dark:shadow-emerald-500/10 dark:hover:shadow-emerald-500/20"
+            aria-label={isDarkMode ? "Switch to light theme" : "Switch to dark theme"}
           >
             {isDarkMode ? (
               <Sun className="w-5 h-5 text-amber-400 dark:drop-shadow-[0_0_8px_rgba(251,191,36,0.5)]" />
@@ -678,17 +794,19 @@ export default function App() {
             )}
           </button>
         </div>
+      </header>
 
+      <main id="main-content" className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-12 sm:pb-16 lg:pb-20">
         {/* Hero Section */}
         <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_420px] lg:gap-16 items-start lg:min-h-[420px] mb-16 sm:mb-20">
-          <div className="mx-auto flex w-full max-w-3xl flex-col items-center space-y-8 text-center lg:items-start lg:text-left self-center">
+          <div className="mx-auto flex w-full min-w-0 max-w-3xl flex-col items-center space-y-8 text-center lg:items-start lg:text-left self-center">
             <div className="space-y-5">
-              <div className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-50 dark:bg-emerald-500/15 border border-emerald-200 dark:border-emerald-500/40 rounded-full backdrop-blur-sm">
+              <div className="inline-flex max-w-full items-center gap-2 px-4 py-2 bg-emerald-50 dark:bg-emerald-500/15 border border-emerald-200 dark:border-emerald-500/40 rounded-full backdrop-blur-sm">
                 <span className="inline-flex h-2 w-2 rounded-full bg-emerald-500 dark:bg-emerald-400"></span>
-                <span className="text-sm text-emerald-700 dark:text-emerald-300">Built for DLSU students</span>
+                <span className="min-w-0 text-sm text-emerald-700 dark:text-emerald-300">Built for DLSU students</span>
               </div>
 
-              <h1 className="text-4xl sm:text-5xl lg:text-7xl text-gray-900 dark:text-white leading-[1.1] tracking-tight">
+              <h1 className="text-4xl sm:text-5xl lg:text-7xl text-gray-900 dark:text-white leading-[1.1] tracking-tight hyphens-auto break-words">
                 Turn your EAF into your class schedule <span className="text-emerald-600 dark:text-emerald-400">instantly.</span>
               </h1>
 
@@ -700,14 +818,14 @@ export default function App() {
             <div className="flex flex-col sm:flex-row gap-3 justify-center lg:justify-start">
               <button
                 onClick={scrollToUpload}
-                className="group px-8 py-4 bg-gradient-to-r from-emerald-700 to-teal-700 hover:from-emerald-800 hover:to-teal-800 text-white rounded-2xl transition-all duration-300 shadow-lg shadow-emerald-700/30 hover:shadow-xl hover:shadow-emerald-700/40 hover:-translate-y-0.5 flex items-center justify-center gap-2"
+                className="group px-6 sm:px-8 py-4 bg-gradient-to-r from-emerald-700 to-teal-700 hover:from-emerald-800 hover:to-teal-800 text-white rounded-2xl transition-all duration-300 shadow-lg shadow-emerald-700/30 hover:shadow-xl hover:shadow-emerald-700/40 hover:-translate-y-0.5 flex items-center justify-center gap-2"
               >
                 Create my schedule
                 <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
               </button>
               <button
                 onClick={triggerFileUpload}
-                className="px-8 py-4 bg-white/80 dark:bg-slate-700/60 backdrop-blur-sm hover:bg-white dark:hover:bg-slate-700/80 text-emerald-700 dark:text-emerald-300 rounded-2xl border border-emerald-200 dark:border-emerald-500/40 transition-all duration-300 shadow-md hover:shadow-lg hover:-translate-y-0.5"
+                className="px-6 sm:px-8 py-4 bg-white/80 dark:bg-slate-700/60 backdrop-blur-sm hover:bg-white dark:hover:bg-slate-700/80 text-emerald-700 dark:text-emerald-300 rounded-2xl border border-emerald-200 dark:border-emerald-500/40 transition-all duration-300 shadow-md hover:shadow-lg hover:-translate-y-0.5"
               >
                 Upload EAF
               </button>
@@ -726,7 +844,7 @@ export default function App() {
                 <IconTile tone="emerald" className="transition-transform duration-300 group-hover:scale-110">
                   <span className="text-lg">1</span>
                 </IconTile>
-                <div className="pt-0.5">
+                <div className="min-w-0 pt-0.5">
                   <h3 className="text-foreground mb-1.5">Upload</h3>
                   <p className="text-muted-foreground text-base leading-relaxed">Upload your latest Archers Hub EAF PDF.</p>
                 </div>
@@ -736,7 +854,7 @@ export default function App() {
                 <IconTile tone="teal" className="transition-transform duration-300 group-hover:scale-110">
                   <span className="text-lg">2</span>
                 </IconTile>
-                <div className="pt-0.5">
+                <div className="min-w-0 pt-0.5">
                   <h3 className="text-foreground mb-1.5">Review</h3>
                   <p className="text-muted-foreground text-base leading-relaxed">Adjust schedule details and generate a ready-to-import .ics calendar file.</p>
                 </div>
@@ -746,7 +864,7 @@ export default function App() {
                 <IconTile tone="brand" className="shadow-emerald-700/30 dark:shadow-emerald-400/30 transition-transform duration-300 group-hover:scale-110">
                   <span className="text-lg">3</span>
                 </IconTile>
-                <div className="pt-0.5">
+                <div className="min-w-0 pt-0.5">
                   <h3 className="text-foreground mb-1.5">Import</h3>
                   <p className="text-muted-foreground text-base leading-relaxed">Import your schedule into Google Calendar securely. Files are processed in memory only.</p>
                 </div>
@@ -768,7 +886,7 @@ export default function App() {
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
             onDrop={handleDrop}
-            className={`group relative border-2 border-dashed rounded-3xl p-12 sm:p-16 text-center transition-all duration-300 overflow-hidden ${
+            className={`group relative border-2 border-dashed rounded-3xl p-8 sm:p-12 lg:p-16 text-center transition-all duration-300 ${
               isDragging
                 ? "border-emerald-500 dark:border-emerald-400 bg-emerald-50/50 dark:bg-emerald-500/10 scale-[1.01]"
                 : file
@@ -777,7 +895,7 @@ export default function App() {
             }`}
           >
             {/* Background pattern */}
-            <div className="absolute inset-0 opacity-[0.02]" style={{
+            <div aria-hidden="true" className="absolute inset-0 overflow-hidden rounded-[inherit] opacity-[0.02]" style={{
               backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23000000' fill-opacity='1'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`,
             }}></div>
 
@@ -836,6 +954,7 @@ export default function App() {
         
         {/* The file itself is unusable, so the form is replaced until a new upload. */}
         {parseError && !isScheduleCreated && (
+          <div ref={parseErrorRef}>
           <Alert
             tone="danger"
             className="mb-12"
@@ -846,6 +965,7 @@ export default function App() {
           >
             <AmbiguousRowList groups={ambiguousRowGroups} tone="danger" />
           </Alert>
+          </div>
         )}
 
         {file && !isScheduleCreated && !parseError && (
@@ -888,7 +1008,7 @@ export default function App() {
                         onChange={(e) => setAcknowledgedMissingRows(e.target.checked)}
                         aria-invalid={Boolean(validationErrors.acknowledgeRows)}
                         aria-describedby={validationErrors.acknowledgeRows ? "acknowledge-rows-error" : undefined}
-                        className="mt-0.5 w-4 h-4 accent-amber-600"
+                        className="mt-0.5 h-5 w-5 shrink-0 accent-amber-600"
                       />
                       <span className="text-sm text-amber-900 dark:text-amber-100 leading-relaxed">
                         I understand these classes will not be in my calendar, and I will add them myself.
@@ -1010,14 +1130,14 @@ export default function App() {
               <button
                 onClick={handleCreateSchedule}
                 disabled={isGenerating}
-                className="group px-10 py-4 bg-gradient-to-r from-emerald-700 to-teal-700 hover:from-emerald-800 hover:to-teal-800 disabled:from-emerald-600 disabled:to-teal-600 disabled:cursor-wait text-white rounded-2xl transition-all duration-300 shadow-xl shadow-emerald-700/30 hover:shadow-2xl hover:shadow-emerald-700/40 hover:-translate-y-1 disabled:hover:translate-y-0 flex items-center gap-3"
+                className="group px-6 sm:px-10 py-4 bg-gradient-to-r from-emerald-700 to-teal-700 hover:from-emerald-800 hover:to-teal-800 disabled:from-emerald-600 disabled:to-teal-600 disabled:cursor-wait text-white rounded-2xl transition-all duration-300 shadow-xl shadow-emerald-700/30 hover:shadow-2xl hover:shadow-emerald-700/40 hover:-translate-y-1 disabled:hover:translate-y-0 flex items-center gap-3"
               >
                 <Calendar className="w-5 h-5" />
                 {isGenerating ? "Creating schedule..." : "Create my schedule"}
               </button>
               <button
                 onClick={handleClear}
-                className="px-10 py-4 bg-white/80 dark:bg-slate-700/60 backdrop-blur-sm hover:bg-white dark:hover:bg-slate-700/80 text-gray-700 dark:text-gray-200 rounded-2xl border border-gray-200 dark:border-slate-600 transition-all duration-300 shadow-lg hover:shadow-xl hover:-translate-y-1"
+                className="px-6 sm:px-10 py-4 bg-white/80 dark:bg-slate-700/60 backdrop-blur-sm hover:bg-white dark:hover:bg-slate-700/80 text-gray-700 dark:text-gray-200 rounded-2xl border border-gray-200 dark:border-slate-600 transition-all duration-300 shadow-lg hover:shadow-xl hover:-translate-y-1"
               >
                 Clear and upload again
               </button>
@@ -1183,10 +1303,20 @@ export default function App() {
                                   <Calendar className="h-3 w-3 opacity-60" />
                                   <span className="leading-none">{course.hasRecollection && recollectionDates[course.code] ? "One-time date" : "Recurring weekly"}</span>
                                 </span>
+                                {/* The slot beside the label carries the value, not the
+                                    label again: a recollection shows the date it lands
+                                    on, so a weekly course shows how long it runs. It
+                                    used to read "Recurring weekly - Weekly", which said
+                                    the same thing twice and left the one number the
+                                    student actually chose off the summary. */}
                                 {course.hasRecollection && recollectionDates[course.code] ? (
                                   <DatePill date={recollectionDates[course.code]} />
                                 ) : (
-                                  <span className="text-subtle-foreground">Weekly</span>
+                                  <span className="text-subtle-foreground tabular-nums">
+                                    {Number(numWeeks) > 0
+                                      ? `${numWeeks} ${Number(numWeeks) === 1 ? "week" : "weeks"}`
+                                      : "Every week"}
+                                  </span>
                                 )}
                               </div>
 
@@ -1285,7 +1415,7 @@ export default function App() {
               <div className="flex justify-center pt-4">
                 <button
                   onClick={handleClear}
-                  className="group px-10 py-4 bg-white/80 dark:bg-gray-700/80 backdrop-blur-sm hover:bg-white dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200 rounded-2xl border border-gray-200 dark:border-gray-600 transition-all duration-300 shadow-lg hover:shadow-xl hover:-translate-y-0.5 flex items-center gap-2"
+                  className="group px-6 sm:px-10 py-4 bg-white/80 dark:bg-gray-700/80 backdrop-blur-sm hover:bg-white dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200 rounded-2xl border border-gray-200 dark:border-gray-600 transition-all duration-300 shadow-lg hover:shadow-xl hover:-translate-y-0.5 flex items-center gap-2"
                 >
                   <ArrowRight className="w-5 h-5 rotate-180 group-hover:-translate-x-1 transition-transform" />
                   Create another schedule
@@ -1295,16 +1425,54 @@ export default function App() {
           </div>
         )}
 
-        {/* Privacy Notice */}
-        <div className="max-w-3xl mx-auto pt-12 pb-8 px-4 border-t border-gray-200/30 dark:border-slate-700/50 mt-16">
+        {/* Privacy Notice. Still the `#privacy` anchor, because both "What we
+            collect" links are real anchors first and only suppress their
+            navigation once the dialog has taken over - so this stays the
+            fallback destination on a browser without `showModal`. There is no
+            policy page: the whole policy is three paragraphs, and a separate
+            document would only drift away from what the code does. */}
+        <div id="privacy" className="max-w-3xl mx-auto pt-12 pb-8 px-4 border-t border-gray-200/30 dark:border-slate-700/50 mt-16 scroll-mt-8">
           <div className="space-y-6">
-            <div>
-              <h3 className="text-sm text-subtle-foreground mb-3 flex items-center gap-2">
+            <div className="space-y-3">
+              <h3 className="text-sm text-subtle-foreground flex items-center gap-2">
                 <Shield className="w-4 h-4" />
                 Privacy Notice
               </h3>
+              {/* One paragraph, not three stacked lines: the promise, the current
+                  state, and the way to the detail all belong to the same
+                  thought, and breaking them apart gave a three-line block the
+                  visual weight of three separate claims.
+
+                  The switch itself lives in the dialog, which means the page no
+                  longer shows the student what they chose - and the checkbox was
+                  doing that job as much as it was offering the choice. Three
+                  words of status put it back. `unset` reads as off because that
+                  is the truth: nothing loads until someone agrees.
+
+                  The status is withheld until there is a real answer to report.
+                  While the bar is still asking, a flat "Analytics is off."
+                  sitting further down the same page reads as though the question
+                  had already been settled, and quietly argues with the thing
+                  asking it. Only that sentence is conditional - the link is the
+                  permanent way back into the dialog and must never go with it,
+                  and the label matches the bar's because two names for one
+                  destination would read as two destinations. */}
               <p className="max-w-[62ch] text-sm text-subtle-foreground leading-relaxed">
-                We use Google Analytics to understand general site usage. Your uploaded PDF is processed in memory only and is never stored on our servers. All data extracted from the PDF is automatically deleted after processing.
+                {PRIVACY_SUMMARY}{" "}
+                {analyticsConsent !== "unset" && (
+                  <>{analyticsConsent === "granted" ? "Analytics is on." : "Analytics is off."}{" "}</>
+                )}
+                <a
+                  href="#privacy"
+                  onClick={(event) => {
+                    if (openPrivacy()) {
+                      event.preventDefault();
+                    }
+                  }}
+                  className="rounded underline underline-offset-2 transition-colors hover:text-emerald-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:hover:text-emerald-400"
+                >
+                  What we collect
+                </a>
               </p>
             </div>
 
@@ -1313,10 +1481,10 @@ export default function App() {
               <div className="flex flex-wrap gap-3 text-sm">
                 <a
                   href="mailto:angelo_nuque@dlsu.edu.ph"
-                  className="inline-flex items-center gap-1.5 text-muted-foreground hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors"
+                  className="inline-flex min-w-0 items-center gap-1.5 py-2 text-muted-foreground hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors"
                 >
-                  <Mail className="w-3.5 h-3.5" />
-                  <span>angelo_nuque@dlsu.edu.ph</span>
+                  <Mail className="w-3.5 h-3.5 shrink-0" />
+                  <span className="break-all">angelo_nuque@dlsu.edu.ph</span>
                 </a>
                 {/* A separator, not content. Left readable to a screen reader
                     it announces "bullet" between two links; hidden, it is also
@@ -1327,9 +1495,9 @@ export default function App() {
                   href="https://github.com/Stilsi-dev/EAFSchedulr/issues"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1.5 text-muted-foreground hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors"
+                  className="inline-flex items-center gap-1.5 py-2 text-muted-foreground hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors"
                 >
-                  <Github className="w-3.5 h-3.5" />
+                  <Github className="w-3.5 h-3.5 shrink-0" />
                   <span>Report on GitHub</span>
                 </a>
               </div>
@@ -1337,10 +1505,10 @@ export default function App() {
           </div>
         </div>
 
-      </div>
+      </main>
 
       {/* Footer - Always at bottom */}
-      <div className="w-full border-t border-gray-200/30 dark:border-slate-700/50 bg-white/40 dark:bg-slate-900/60 backdrop-blur-sm">
+      <footer className="w-full border-t border-gray-200/30 dark:border-slate-700/50 bg-white/40 dark:bg-slate-900/60 backdrop-blur-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 text-center">
           <div className="inline-flex items-center gap-2 text-sm text-muted-foreground">
             <span>Made by a Lasallian</span>
@@ -1351,7 +1519,14 @@ export default function App() {
             <span>for Lasallians</span>
           </div>
         </div>
-      </div>
+      </footer>
+
+      <PrivacyDialog
+        open={isPrivacyOpen}
+        onClose={() => setIsPrivacyOpen(false)}
+        consent={analyticsConsent}
+        onConsentChange={handleConsent}
+      />
     </div>
   );
 }
