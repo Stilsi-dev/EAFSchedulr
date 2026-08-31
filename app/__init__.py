@@ -9,6 +9,7 @@ import os
 from pathlib import Path
 
 from flask import Flask, jsonify, request
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 from app.config import MAX_PDF_SIZE_MB, MAX_UPLOAD_SIZE_BYTES
 from app.extensions import limiter
@@ -66,6 +67,33 @@ def create_app() -> Flask:
 			__name__,
 			static_folder=str(repo_root / "public"),
 			static_url_path="",
+		)
+
+		# Behind a hosting platform's router, `request.remote_addr` is the
+		# router's address, not the student's. Every request then hashes to the
+		# same rate-limit bucket, so the 20/min cap on /inspect and /generate
+		# applies to the whole site at once rather than per student. ProxyFix
+		# rewrites remote_addr from X-Forwarded-For so the cap means what the
+		# decorator says it means.
+		#
+		# The count is how many proxies actually sit in front of this app: 1 for
+		# a bare PaaS router, 2 if a CDN fronts that. Set it too high and a
+		# client can spoof its own address by sending the header itself; too low
+		# and students share a proxy's bucket again. Set TRUSTED_PROXY_COUNT to
+		# match the real chain, or 0 when running with no proxy at all.
+		trusted_proxies = int(os.environ.get("TRUSTED_PROXY_COUNT", "1"))
+		if trusted_proxies > 0:
+			app.wsgi_app = ProxyFix(
+				app.wsgi_app, x_for=trusted_proxies, x_proto=trusted_proxies
+			)
+
+		# Cloudflare fronts every onrender.com service, so in production the
+		# CF-Connecting-IP header is present and authoritative, and the limiter
+		# prefers it over the hop counting above. Set this to 0 if the app is
+		# ever served from somewhere Cloudflare is not in front of, where the
+		# header would be whatever the client decided to send.
+		app.config["TRUST_CF_CONNECTING_IP"] = (
+			os.environ.get("TRUST_CF_CONNECTING_IP", "1") != "0"
 		)
 
 		# Use a provided secret in production; fall back for local development

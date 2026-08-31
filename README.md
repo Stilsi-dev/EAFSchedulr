@@ -302,6 +302,15 @@ The included `Procfile` runs `gunicorn -w 1 run:app`. **Keep the worker count at
 
 Set `FLASK_SECRET` in the environment to a strong random value in production.
 
+Two further variables control how the rate limiter identifies a student. The defaults are correct for the current Render deployment, so they only need setting if the hosting setup changes.
+
+| Variable | Default | What it does |
+|---|---|---|
+| `TRUST_CF_CONNECTING_IP` | `1` | Trust Cloudflare's `CF-Connecting-IP` header as the student's address. Render fronts every `onrender.com` service with Cloudflare, so this is authoritative in production. Set to `0` anywhere Cloudflare is not in front, where the header would be whatever the client chose to send. |
+| `TRUSTED_PROXY_COUNT` | `1` | How many proxies to look past in `X-Forwarded-For`. Used only as a fallback, when the Cloudflare header is absent. Set to `0` when running with no proxy at all. |
+
+Getting either wrong is not a security hole, but it does drop every student into a single rate-limit bucket, which turns the per-IP cap on `/inspect` and `/generate` into a site-wide one.
+
 ## License
 
 License: MIT License — see the `LICENSE` file for details.
