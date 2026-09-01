@@ -1446,41 +1446,6 @@ export default function App() {
             {/* Content Cards Container */}
             <div className="space-y-6">
 
-                {false && (
-                  <>
-                {/* Filename Card */}
-                <div className="bg-gradient-to-br from-gray-50 to-slate-50/80 dark:from-slate-800/60 dark:to-slate-700/40 backdrop-blur-sm rounded-3xl p-6 sm:p-8 mb-8 border border-gray-200/50 dark:border-slate-600/30 shadow-xl shadow-gray-500/5 dark:shadow-slate-500/10 animate-in fade-in slide-in-from-bottom-4 duration-400">
-                  <div className="flex items-center gap-4 mb-6">
-                    <div className="relative">
-                      <div className="absolute inset-0 bg-gradient-to-br from-slate-400 to-slate-500 dark:from-slate-500 dark:to-slate-600 rounded-2xl blur-lg opacity-40"></div>
-                      <div className="relative w-16 h-16 bg-gradient-to-br from-slate-500 to-slate-600 dark:from-slate-600 dark:to-slate-700 rounded-2xl flex items-center justify-center shadow-xl shadow-slate-500/40">
-                        <FileText className="w-8 h-8 text-white" />
-                      </div>
-                    </div>
-                    <div>
-                      <p className="text-base text-gray-600 dark:text-gray-300 mb-1">Your calendar file</p>
-                    </div>
-                  </div>
-
-                  <div className="space-y-4">
-                    <div className="bg-card-inset backdrop-blur-sm rounded-2xl p-5 border border-gray-200/30 dark:border-slate-600/30">
-                      <p className="text-xs text-subtle-foreground mb-2 uppercase tracking-wide">Filename</p>
-                      <p className="text-base text-foreground break-all font-mono leading-relaxed">
-                          {generatedFilename}
-                      </p>
-                    </div>
-
-                    <div className="flex items-start gap-2 text-xs text-muted-foreground bg-white/50 dark:bg-slate-700/40 rounded-xl p-3 border border-gray-200/30 dark:border-slate-600/30">
-                      <div className="w-1.5 h-1.5 bg-slate-500 dark:bg-slate-400 rounded-full mt-1.5 flex-shrink-0"></div>
-                      <p className="leading-relaxed">
-                        iCalendar format (.ics) • Compatible with Google Calendar, Apple Calendar, Outlook
-                      </p>
-                    </div>
-                  </div>
-                </div>
-                  </>
-                )}
-
                 {/* Schedule Summary - Consistent Cards */}
                 <div className="space-y-6 mb-10 animate-in fade-in slide-in-from-bottom-4 duration-400">
                   {/* Courses Card */}
