@@ -76,14 +76,22 @@
     </style>
 
     <!--
-      Google Analytics, off until asked and off the critical path.
+      Google Analytics, on unless refused, and off the critical path.
 
-      Nothing here contacts Google until the student says yes. `gtag.js` is not
-      fetched, `dataLayer` is never touched and no cookie is set, so a student
-      who ignores the consent bar - most of them, in a product used once a
-      term - leaves no trace with a third party. That is the entire point of
-      the bar in ConsentBanner.tsx: one that gated nothing would be worse than
-      shipping none at all.
+      The default is on. `gtag.js` loads for a student who has not answered the
+      consent bar, and only a stored 'denied' stops it, so the student who
+      ignores the bar - most of them, in a product used once a term - is
+      measured. This is a deliberate product decision, and it is worth naming
+      what it costs: the bar in ConsentBanner.tsx still asks "Can we count this
+      visit?" while the answer is already yes, so it is a notice wearing a
+      question's clothes. It is kept as an ask because the decline it offers is
+      real and immediate, not because the wording is honest about the default.
+
+      That immediacy is now load-bearing rather than a nicety. Under opt-in, a
+      student who never answered had sent nothing; under opt-out they have, so
+      `disable()` below is the only thing standing between a decline and a
+      visit that was already counted. It has to bite in this session, because
+      there is no next one.
 
       Two entry points, both called from analytics.ts:
 
@@ -97,7 +105,8 @@
       `ga-disable-<id>` kill switch, which gtag.js consults at send time, and
       clears the cookies, rather than only writing to localStorage.
 
-      Timing applies solely to consent already stored from a previous visit.
+      Timing applies to the unanswered first visit as well as to consent
+      already stored from a previous one, since both now load.
       Loading gtag.js from `<head>` cost a measured 1072ms of First Contentful
       Paint and every millisecond of Total Blocking Time (261ms) on a throttled
       phone: it competes with the app bundle for both the connection and the
@@ -116,7 +125,9 @@
       The key and its values must match the `analyticsConsent` reads and writes
       in analytics.ts. Unlike `darkMode` it is stored as a bare string rather
       than JSON, because it has three states and not two: a missing key means
-      unasked, and only the React side needs to tell that from a real 'denied'.
+      unasked. Only the React side still needs to tell unasked from 'granted' -
+      it decides whether to show the bar - while this loader now cares about
+      exactly one value, 'denied'.
     -->
     <script>
       (function () {
@@ -178,21 +189,30 @@
           }
         };
 
+        var stored = null;
         try {
-          if (localStorage.getItem('analyticsConsent') === 'granted') {
-            if (document.readyState === 'complete') {
-              scheduleAfterBoot();
-            } else {
-              addEventListener('load', scheduleAfterBoot, { once: true });
-            }
-          }
+          stored = localStorage.getItem('analyticsConsent');
         } catch (e) {
-          /* Private mode or blocked storage: unasked, so nothing loads. */
+          /* Private mode or blocked storage. Nothing can be remembered, so no
+             refusal can be read back either - and with the default on, an
+             unreadable store means load. A student in this state who declines
+             is switched off for the session by disable() and has to decline
+             again next time, because there is nowhere to write the answer. */
+        }
+
+        /* One value matters here. 'granted' and a missing key both load; only
+           an explicit refusal does not. */
+        if (stored !== 'denied') {
+          if (document.readyState === 'complete') {
+            scheduleAfterBoot();
+          } else {
+            addEventListener('load', scheduleAfterBoot, { once: true });
+          }
         }
       })();
     </script>
-    <script type="module" crossorigin src="/assets/index-CaT8lYwJ.js"></script>
-    <link rel="stylesheet" crossorigin href="/assets/index-CBguWIWt.css">
+    <script type="module" crossorigin src="/assets/index--udpBb6M.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-Dxml5QOM.css">
   </head>
 
   <body>
