@@ -1,11 +1,12 @@
 import { useState, useRef, useEffect, useMemo, type ChangeEvent, type DragEvent } from "react";
-import { Upload, Calendar, CheckCircle2, AlertCircle, FileText, CalendarPlus, ExternalLink, ArrowRight, Download, BookOpen, CalendarDays, Shield, Mail, Github, Heart, MapPin, Moon, Sun } from "lucide-react";
+import { Upload, Calendar, CheckCircle2, AlertCircle, FileText, CalendarPlus, ExternalLink, Info, ArrowRight, Download, BookOpen, CalendarDays, Shield, Mail, Github, Heart, MapPin, Moon, Sun } from "lucide-react";
 import { Alert } from "./components/ui/Alert";
 import { AmbiguousRowList } from "./components/ui/AmbiguousRowList";
 import { Field } from "./components/ui/Field";
 import { GlassCard } from "./components/ui/GlassCard";
 import { IconTile } from "./components/ui/IconTile";
 import { ConsentBanner } from "./components/ConsentBanner";
+import { AboutDialog } from "./components/AboutDialog";
 import { PrivacyDialog, PRIVACY_SUMMARY } from "./components/PrivacyDialog";
 import { readConsent, writeConsent, type Consent } from "./analytics";
 import {
@@ -310,6 +311,7 @@ export default function App() {
     themePreference === "system" ? systemPrefersDark : themePreference === "dark";
   const [analyticsConsent, setAnalyticsConsent] = useState<Consent>(readConsent);
   const [isPrivacyOpen, setIsPrivacyOpen] = useState(false);
+  const [isAboutOpen, setIsAboutOpen] = useState(false);
 
   const uploadSectionRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -423,6 +425,15 @@ export default function App() {
    * so a browser without `showModal` still gets the student to the notice
    * rather than to nothing at all.
    */
+  const openAbout = () => {
+    if (typeof HTMLDialogElement === "undefined" || !HTMLDialogElement.prototype.showModal) {
+      document.getElementById("privacy")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      return;
+    }
+
+    setIsAboutOpen(true);
+  };
+
   const openPrivacy = () => {
     if (typeof HTMLDialogElement === "undefined" || !HTMLDialogElement.prototype.showModal) {
       return false;
@@ -968,27 +979,27 @@ export default function App() {
               </div>
 
               <h1 className="text-4xl sm:text-5xl lg:text-7xl text-gray-900 dark:text-white leading-[1.1] tracking-tight hyphens-auto break-words">
-                Turn your EAF into your class schedule <span className="text-emerald-600 dark:text-emerald-400">instantly.</span>
+                Turn your EAF into a calendar-ready schedule. <span className="text-emerald-600 dark:text-emerald-400">Instantly.</span>
               </h1>
 
               <p className="text-lg sm:text-2xl text-muted-foreground leading-relaxed">
-                Upload your EAF and get a ready-to-use Google Calendar in seconds.
+                Upload the PDF and get a file Google Calendar can import. No adding classes one by one.
               </p>
             </div>
 
             <div className="flex flex-col sm:flex-row gap-3 justify-center lg:justify-start">
               <button
-                onClick={scrollToUpload}
+                onClick={triggerFileUpload}
                 className="group px-6 sm:px-8 py-4 bg-gradient-to-r from-emerald-700 to-teal-700 hover:from-emerald-800 hover:to-teal-800 text-white rounded-2xl transition-all duration-300 shadow-lg shadow-emerald-700/30 hover:shadow-xl hover:shadow-emerald-700/40 hover:-translate-y-0.5 flex items-center justify-center gap-2"
               >
-                Create my schedule
+                Upload my EAF
                 <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
               </button>
               <button
-                onClick={triggerFileUpload}
+                onClick={openAbout}
                 className="px-6 sm:px-8 py-4 bg-white/80 dark:bg-slate-700/60 backdrop-blur-sm hover:bg-white dark:hover:bg-slate-700/80 text-emerald-700 dark:text-emerald-300 rounded-2xl border border-emerald-200 dark:border-emerald-500/40 transition-all duration-300 shadow-md hover:shadow-lg hover:-translate-y-0.5"
               >
-                Upload EAF
+                About this tool
               </button>
             </div>
           </div>
@@ -1007,7 +1018,7 @@ export default function App() {
                 </IconTile>
                 <div className="min-w-0 pt-0.5">
                   <h3 className="text-foreground mb-1.5">Upload</h3>
-                  <p className="text-muted-foreground text-base leading-relaxed">Upload your latest Archers Hub EAF PDF.</p>
+                  <p className="text-muted-foreground text-base leading-relaxed">Drop in your Archers Hub EAF PDF.</p>
                 </div>
               </div>
 
@@ -1017,7 +1028,7 @@ export default function App() {
                 </IconTile>
                 <div className="min-w-0 pt-0.5">
                   <h3 className="text-foreground mb-1.5">Review</h3>
-                  <p className="text-muted-foreground text-base leading-relaxed">Adjust schedule details and generate a ready-to-import .ics calendar file.</p>
+                  <p className="text-muted-foreground text-base leading-relaxed">Check the classes we found and fix anything the PDF got wrong.</p>
                 </div>
               </div>
 
@@ -1027,7 +1038,7 @@ export default function App() {
                 </IconTile>
                 <div className="min-w-0 pt-0.5">
                   <h3 className="text-foreground mb-1.5">Import</h3>
-                  <p className="text-muted-foreground text-base leading-relaxed">Import your schedule into Google Calendar securely. Files are processed in memory only.</p>
+                  <p className="text-muted-foreground text-base leading-relaxed">Open the file in Google Calendar. Your EAF is never saved, only read.</p>
                 </div>
               </div>
             </div>
@@ -1659,30 +1670,21 @@ export default function App() {
                 <Shield className="w-4 h-4" />
                 Privacy Notice
               </h3>
-              {/* One paragraph, not three stacked lines: the promise, the current
-                  state, and the way to the detail all belong to the same
-                  thought, and breaking them apart gave a three-line block the
-                  visual weight of three separate claims.
+              {/* One paragraph, not stacked lines: the promise and the way to
+                  the detail belong to the same thought, and breaking them apart
+                  gave the block the visual weight of two separate claims.
 
-                  The switch itself lives in the dialog, which means the page no
-                  longer shows the student what they chose - and the checkbox was
-                  doing that job as much as it was offering the choice. Three
-                  words of status put it back. `unset` reads as off because that
-                  is the truth: nothing loads until someone agrees.
-
-                  The status is withheld until there is a real answer to report.
-                  While the bar is still asking, a flat "Analytics is off."
-                  sitting further down the same page reads as though the question
-                  had already been settled, and quietly argues with the thing
-                  asking it. Only that sentence is conditional - the link is the
-                  permanent way back into the dialog and must never go with it,
-                  and the label matches the bar's because two names for one
-                  destination would read as two destinations. */}
+                  The status sentence that used to sit between them is gone. It
+                  reported the switch's position in words, which was worth doing
+                  while the page had no other sign of it - but the switch itself
+                  is one click away behind the link, and a status line has to be
+                  kept true by hand every time the default changes. It already
+                  went stale once. The link is the permanent way back into the
+                  dialog and never goes with it, and the label matches the bar's
+                  because two names for one destination would read as two
+                  destinations. */}
               <p className="max-w-[62ch] text-sm text-subtle-foreground leading-relaxed">
                 {PRIVACY_SUMMARY}{" "}
-                {analyticsConsent !== "unset" && (
-                  <>{analyticsConsent === "granted" ? "Analytics is on." : "Analytics is off."}{" "}</>
-                )}
                 <a
                   href="#privacy"
                   onClick={(event) => {
@@ -1742,6 +1744,17 @@ export default function App() {
         </div>
       </footer>
 
+      <AboutDialog
+        open={isAboutOpen}
+        onClose={() => setIsAboutOpen(false)}
+        // One modal at a time: close this one before the browser is asked to
+        // show the next, or the backdrops stack.
+        onOpenPrivacy={() => {
+          setIsAboutOpen(false);
+          openPrivacy();
+        }}
+      />
+
       <PrivacyDialog
         open={isPrivacyOpen}
         onClose={() => setIsPrivacyOpen(false)}
@@ -1772,6 +1785,7 @@ function DatePill({ date }: { date: string }) {
     </div>
   );
 }
+
 /**
  * What to do with the file once it is on disk.
  *
@@ -1784,94 +1798,121 @@ function DatePill({ date }: { date: string }) {
  * lives in Settings and cannot be reached by opening the file, while Apple
  * Calendar and Outlook are close enough to a double-click that giving them
  * equal weight would misrepresent equal difficulty.
+ *
+ * Three bands, not one column. The card is 1216px wide and a readable measure
+ * is about 494px, so a single column left two thirds of the card empty on one
+ * side - which reads as content that failed to load rather than as breathing
+ * room. The sequence and the things you need to know before starting it are
+ * genuinely different content, so they became columns; Apple and Outlook are
+ * peers of each other and nothing else, so they became the bottom band.
+ *
+ * The whole group is centred at `max-w-[970px]` rather than stretched. Two
+ * columns cannot both hold their measure and fill 1152px without the aside
+ * growing wider than the steps it is subordinate to, so the leftover ~180px
+ * is split evenly instead of dumped on the right edge. Symmetric slack reads
+ * as padding; asymmetric slack reads as a bug.
  */
 function ImportSteps() {
   return (
     <div className="bg-gradient-to-br from-teal-50 to-teal-100/70 dark:from-teal-900/20 dark:to-teal-800/20 backdrop-blur-sm rounded-3xl p-6 sm:p-8 border border-teal-200/50 dark:border-teal-700/30 shadow-xl shadow-teal-500/5">
-      <div className="flex items-center gap-3">
-        <div className="relative">
-          <div className="absolute inset-0 bg-gradient-to-br from-teal-400 to-teal-500 rounded-2xl blur-md opacity-25"></div>
-          <IconTile tone="teal" size="lg" className="relative">
-            <CalendarPlus className="w-8 h-8" />
-          </IconTile>
+      <div className="mx-auto w-full max-w-[970px]">
+        <div className="flex items-center gap-3">
+          <div className="relative">
+            <div className="absolute inset-0 bg-gradient-to-br from-teal-400 to-teal-500 rounded-2xl blur-md opacity-25"></div>
+            <IconTile tone="teal" size="lg" className="relative">
+              <CalendarPlus className="w-8 h-8" />
+            </IconTile>
+          </div>
+          <div className="text-left">
+            <h3 className="text-xl font-medium text-foreground">Import it into your calendar</h3>
+            <p className="mt-1 text-sm text-subtle-foreground">Takes about a minute.</p>
+          </div>
         </div>
-        <div className="text-left">
-          <h3 className="text-xl font-medium text-foreground">Import it into your calendar</h3>
-          <p className="mt-1 text-sm text-subtle-foreground">Takes about a minute.</p>
+
+        {/* Below lg the aside would be about 290px, too narrow for two
+            paragraphs, so the split turns on at lg rather than md and
+            everything stacks in between. */}
+        <div className="mt-8 grid gap-x-12 gap-y-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,400px)]">
+          <div>
+            <p className="text-sm font-semibold text-label-foreground">Google Calendar</p>
+            <ol className="mt-3 max-w-[68ch] list-decimal space-y-3 pl-5 text-sm leading-relaxed text-muted-foreground marker:font-semibold marker:text-teal-700 dark:marker:text-teal-300">
+              {/* Step one on purpose. Every generation mints fresh event UIDs,
+                  so a student who regenerates and imports again stacks a
+                  second timetable on the first, with no bulk undo in Google
+                  Calendar. The reason sits in the aside rather than in the
+                  step: people follow numbered lists, and an item that argues
+                  with you reads as a warning and gets skipped. */}
+              <li>
+                In Google Calendar on a computer, create a new calendar for this term. In the left
+                sidebar, next to <span className="text-label-foreground">Other calendars</span>, click
+                + and then <span className="text-label-foreground">Create new calendar</span>.
+              </li>
+              <li>
+                Go to <span className="text-label-foreground">Settings</span>, then{" "}
+                <span className="text-label-foreground">Import &amp; export</span>.
+              </li>
+              <li>Choose the .ics file you just downloaded.</li>
+              <li>
+                Under <span className="text-label-foreground">Add to calendar</span>, pick the
+                calendar you made in step 1, then click{" "}
+                <span className="text-label-foreground">Import</span>.
+              </li>
+            </ol>
+
+            {/* The written path above is the one that survives. This link
+                opens a new tab, so our text is no longer in front of the
+                student once they are over there - and it is deliberately
+                account-neutral, with no `/u/0/`, because students commonly
+                have a personal and a DLSU account signed in at once and
+                pinning index 0 lands them in whichever they logged into
+                first. */}
+            <a
+              href="https://calendar.google.com/calendar/r/settings/export"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-5 inline-flex items-center gap-2 rounded-2xl border border-teal-200/60 bg-white/70 px-4 py-2.5 text-sm font-semibold text-teal-700 shadow-sm transition-colors hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:border-teal-500/25 dark:bg-slate-700/40 dark:text-teal-200 dark:hover:bg-slate-700/60"
+            >
+              <ExternalLink className="h-4 w-4 shrink-0" />
+              Open Google Calendar import
+            </a>
+          </div>
+
+          {/* A well, not a nested card: hairline border, no shadow. The
+              mobile constraint was previously a plain grey paragraph in the
+              same size and colour as everything around it, which is how the
+              one thing that can dead-end a student became the easiest thing
+              to skim past. Set apart, it is the second thing the eye lands
+              on rather than the fifth. */}
+          <aside className="h-fit rounded-2xl border border-teal-200/60 bg-card-well p-5 dark:border-teal-500/20">
+            <h4 className="flex items-center gap-2 text-sm font-semibold text-label-foreground">
+              <Info className="h-4 w-4 shrink-0 text-teal-700 dark:text-teal-300" />
+              Before you start
+            </h4>
+            <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
+              Google Calendar only imports from a computer. If you are on your phone, save the file
+              now and finish these steps on a desktop browser.
+            </p>
+            <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
+              Keeping the term on its own calendar lets you hide it in one toggle, and delete the
+              whole thing in one click if you ever need to generate a corrected file.
+            </p>
+          </aside>
         </div>
-      </div>
 
-      {/* Unconditional, and not behind a viewport check. Google Calendar's
-          mobile apps have no import at all, so a student who runs this on a
-          phone hits a dead end no wording can rescue. Width is not device: a
-          narrow desktop window would be told to go and find the computer it is
-          already running on, and the student planning ahead on a laptop would
-          never learn the constraint. One line everyone reads is the honest
-          shape. */}
-      <p className="mt-6 max-w-[68ch] text-sm leading-relaxed text-muted-foreground">
-        Google Calendar only imports from a computer. If you are on your phone, save the file
-        now and finish these steps on a desktop browser.
-      </p>
-
-      <div className="mt-6">
-        <p className="text-sm font-semibold text-label-foreground">Google Calendar</p>
-        <ol className="mt-3 max-w-[68ch] list-decimal space-y-3 pl-5 text-sm leading-relaxed text-muted-foreground marker:font-semibold marker:text-teal-700 dark:marker:text-teal-300">
-          {/* Step one on purpose. Every generation mints fresh event UIDs, so a
-              student who regenerates and imports again stacks a second
-              timetable on the first, with no bulk undo in Google Calendar. A
-              term on its own calendar is one click to delete. The reason
-              trails the list rather than living in the step: people follow
-              numbered lists, and an item that argues with you reads as a
-              warning and gets skipped. */}
-          <li>
-            In Google Calendar on a computer, create a new calendar for this term. In the left
-            sidebar, next to <span className="text-label-foreground">Other calendars</span>, click
-            + and then <span className="text-label-foreground">Create new calendar</span>.
-          </li>
-          <li>
-            Go to <span className="text-label-foreground">Settings</span>, then{" "}
-            <span className="text-label-foreground">Import &amp; export</span>.
-          </li>
-          <li>Choose the .ics file you just downloaded.</li>
-          <li>
-            Under <span className="text-label-foreground">Add to calendar</span>, pick the calendar
-            you made in step 1, then click <span className="text-label-foreground">Import</span>.
-          </li>
-        </ol>
-
-        {/* The written path above is the one that survives. This link opens a
-            new tab, so our text is no longer in front of the student once they
-            are over there - and it is deliberately account-neutral, with no
-            `/u/0/`, because students commonly have a personal and a DLSU
-            account signed in at once and pinning index 0 lands them in
-            whichever they logged into first. */}
-        <a
-          href="https://calendar.google.com/calendar/r/settings/export"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="mt-4 inline-flex items-center gap-2 rounded-2xl border border-teal-200/60 bg-white/70 px-4 py-2.5 text-sm font-semibold text-teal-700 shadow-sm transition-colors hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:border-teal-500/25 dark:bg-slate-700/40 dark:text-teal-200 dark:hover:bg-slate-700/60"
-        >
-          <ExternalLink className="h-4 w-4 shrink-0" />
-          Open Google Calendar import
-        </a>
-
-        <p className="mt-4 max-w-[68ch] text-sm leading-relaxed text-subtle-foreground">
-          Keeping the term on its own calendar lets you hide it in one toggle, and delete the whole
-          thing in one click if you ever need to generate a corrected file.
-        </p>
-      </div>
-
-      <div className="mt-6 space-y-2 border-t border-teal-200/50 pt-5 text-sm leading-relaxed text-muted-foreground dark:border-teal-700/30">
-        <p className="max-w-[68ch]">
-          <span className="font-semibold text-label-foreground">Apple Calendar</span> · Open the
-          .ics file and choose which calendar to add it to.
-        </p>
-        <p className="max-w-[68ch]">
-          <span className="font-semibold text-label-foreground">Outlook</span> · On the web,{" "}
-          <span className="text-label-foreground">Add calendar</span>, then{" "}
-          <span className="text-label-foreground">Upload from file</span>. In the desktop app,
-          File → Open &amp; Export → Import/Export.
-        </p>
+        {/* Peers of each other and of nothing else, so they sit side by side
+            rather than stacked under the steps they are not part of. */}
+        <div className="mt-8 grid gap-x-10 gap-y-3 border-t border-teal-200/50 pt-6 text-sm leading-relaxed text-muted-foreground sm:grid-cols-2 dark:border-teal-700/30">
+          <p>
+            <span className="font-semibold text-label-foreground">Apple Calendar</span> · Open the
+            .ics file and choose which calendar to add it to.
+          </p>
+          <p>
+            <span className="font-semibold text-label-foreground">Outlook</span> · On the web,{" "}
+            <span className="text-label-foreground">Add calendar</span>, then{" "}
+            <span className="text-label-foreground">Upload from file</span>. In the desktop app,
+            File → Open &amp; Export → Import/Export.
+          </p>
+        </div>
       </div>
     </div>
   );
