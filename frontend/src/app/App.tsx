@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useMemo, type ChangeEvent, type DragEvent } from "react";
-import { Upload, Calendar, CheckCircle2, AlertCircle, Sparkles, FileText, ArrowRight, Download, BookOpen, CalendarDays, Shield, Mail, Github, Heart, MapPin, Moon, Sun } from "lucide-react";
+import { Upload, Calendar, CheckCircle2, AlertCircle, FileText, CalendarPlus, ExternalLink, ArrowRight, Download, BookOpen, CalendarDays, Shield, Mail, Github, Heart, MapPin, Moon, Sun } from "lucide-react";
 import { Alert } from "./components/ui/Alert";
 import { AmbiguousRowList } from "./components/ui/AmbiguousRowList";
 import { Field } from "./components/ui/Field";
@@ -316,6 +316,7 @@ export default function App() {
   const scheduleDetailsRef = useRef<HTMLDivElement>(null);
   const successSectionRef = useRef<HTMLDivElement>(null);
   const parseErrorRef = useRef<HTMLDivElement>(null);
+  const importStepsRef = useRef<HTMLDivElement>(null);
 
   const resetFileInput = () => {
     if (fileInputRef.current) {
@@ -1398,12 +1399,6 @@ export default function App() {
                         Compatible with Google Calendar, Apple Calendar, Outlook, and other calendar apps
                       </p>
                     </div>
-                    <div className="mt-4 flex items-start gap-2 rounded-xl border border-emerald-900/30 bg-emerald-950/25 p-3 text-xs text-emerald-100">
-                      <Sparkles className="mt-0.5 h-4 w-4 flex-shrink-0" />
-                      <p className="max-w-[60ch] leading-relaxed">
-                        Next step: import this .ics file into Google Calendar to view your complete class timetable.
-                      </p>
-                    </div>
                     <div className="mt-4 flex items-center gap-2 text-xs text-emerald-100">
                       <div className="h-1.5 w-1.5 rounded-full bg-emerald-100"></div>
                       <span className="tabular-nums">Generated at {generatedAt || "just now"}</span>
@@ -1445,6 +1440,12 @@ export default function App() {
 
             {/* Content Cards Container */}
             <div className="space-y-6">
+
+                {/* The ref lives here rather than inside the component: only
+                    shared primitives forward refs, and this is a one-off. */}
+                <div ref={importStepsRef} className="scroll-mt-8">
+                  <ImportSteps />
+                </div>
 
                 {/* Schedule Summary - Consistent Cards */}
                 <div className="space-y-6 mb-10 animate-in fade-in slide-in-from-bottom-4 duration-400">
@@ -1751,6 +1752,110 @@ function DatePill({ date }: { date: string }) {
     <div className="inline-flex items-center gap-1.5 text-[13px] text-subtle-foreground">
       <Calendar className="w-3 h-3 opacity-60" />
       <span className="leading-none tabular-nums">{formatDisplayDate(date)}</span>
+    </div>
+  );
+}
+/**
+ * What to do with the file once it is on disk.
+ *
+ * The app's last mile is a file, not a synced calendar, so this is a step in
+ * the flow rather than reference material: always rendered, never collapsed,
+ * and above the schedule summary, because importing is the next action and
+ * reviewing the parse is optional.
+ *
+ * Google is the only one of the three that earns numbered steps. Its import
+ * lives in Settings and cannot be reached by opening the file, while Apple
+ * Calendar and Outlook are close enough to a double-click that giving them
+ * equal weight would misrepresent equal difficulty.
+ */
+function ImportSteps() {
+  return (
+    <div className="bg-gradient-to-br from-teal-50 to-teal-100/70 dark:from-teal-900/20 dark:to-teal-800/20 backdrop-blur-sm rounded-3xl p-6 sm:p-8 border border-teal-200/50 dark:border-teal-700/30 shadow-xl shadow-teal-500/5">
+      <div className="flex items-center gap-3">
+        <div className="relative">
+          <div className="absolute inset-0 bg-gradient-to-br from-teal-400 to-teal-500 rounded-2xl blur-md opacity-25"></div>
+          <IconTile tone="teal" size="lg" className="relative">
+            <CalendarPlus className="w-8 h-8" />
+          </IconTile>
+        </div>
+        <div className="text-left">
+          <h3 className="text-xl font-medium text-foreground">Import it into your calendar</h3>
+          <p className="mt-1 text-sm text-subtle-foreground">Takes about a minute.</p>
+        </div>
+      </div>
+
+      {/* Unconditional, and not behind a viewport check. Google Calendar's
+          mobile apps have no import at all, so a student who runs this on a
+          phone hits a dead end no wording can rescue. Width is not device: a
+          narrow desktop window would be told to go and find the computer it is
+          already running on, and the student planning ahead on a laptop would
+          never learn the constraint. One line everyone reads is the honest
+          shape. */}
+      <p className="mt-6 max-w-[68ch] text-sm leading-relaxed text-muted-foreground">
+        Google Calendar only imports from a computer. If you are on your phone, save the file
+        now and finish these steps on a desktop browser.
+      </p>
+
+      <div className="mt-6">
+        <p className="text-sm font-semibold text-label-foreground">Google Calendar</p>
+        <ol className="mt-3 max-w-[68ch] list-decimal space-y-3 pl-5 text-sm leading-relaxed text-muted-foreground marker:font-semibold marker:text-teal-700 dark:marker:text-teal-300">
+          {/* Step one on purpose. Every generation mints fresh event UIDs, so a
+              student who regenerates and imports again stacks a second
+              timetable on the first, with no bulk undo in Google Calendar. A
+              term on its own calendar is one click to delete. The reason
+              trails the list rather than living in the step: people follow
+              numbered lists, and an item that argues with you reads as a
+              warning and gets skipped. */}
+          <li>
+            In Google Calendar on a computer, create a new calendar for this term. In the left
+            sidebar, next to <span className="text-label-foreground">Other calendars</span>, click
+            + and then <span className="text-label-foreground">Create new calendar</span>.
+          </li>
+          <li>
+            Go to <span className="text-label-foreground">Settings</span>, then{" "}
+            <span className="text-label-foreground">Import &amp; export</span>.
+          </li>
+          <li>Choose the .ics file you just downloaded.</li>
+          <li>
+            Under <span className="text-label-foreground">Add to calendar</span>, pick the calendar
+            you made in step 1, then click <span className="text-label-foreground">Import</span>.
+          </li>
+        </ol>
+
+        {/* The written path above is the one that survives. This link opens a
+            new tab, so our text is no longer in front of the student once they
+            are over there - and it is deliberately account-neutral, with no
+            `/u/0/`, because students commonly have a personal and a DLSU
+            account signed in at once and pinning index 0 lands them in
+            whichever they logged into first. */}
+        <a
+          href="https://calendar.google.com/calendar/r/settings/export"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="mt-4 inline-flex items-center gap-2 rounded-2xl border border-teal-200/60 bg-white/70 px-4 py-2.5 text-sm font-semibold text-teal-700 shadow-sm transition-colors hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:border-teal-500/25 dark:bg-slate-700/40 dark:text-teal-200 dark:hover:bg-slate-700/60"
+        >
+          <ExternalLink className="h-4 w-4 shrink-0" />
+          Open Google Calendar import
+        </a>
+
+        <p className="mt-4 max-w-[68ch] text-sm leading-relaxed text-subtle-foreground">
+          Keeping the term on its own calendar lets you hide it in one toggle, and delete the whole
+          thing in one click if you ever need to generate a corrected file.
+        </p>
+      </div>
+
+      <div className="mt-6 space-y-2 border-t border-teal-200/50 pt-5 text-sm leading-relaxed text-muted-foreground dark:border-teal-700/30">
+        <p className="max-w-[68ch]">
+          <span className="font-semibold text-label-foreground">Apple Calendar</span> · Open the
+          .ics file and choose which calendar to add it to.
+        </p>
+        <p className="max-w-[68ch]">
+          <span className="font-semibold text-label-foreground">Outlook</span> · On the web,{" "}
+          <span className="text-label-foreground">Add calendar</span>, then{" "}
+          <span className="text-label-foreground">Upload from file</span>. In the desktop app,
+          File → Open &amp; Export → Import/Export.
+        </p>
+      </div>
     </div>
   );
 }

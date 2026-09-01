@@ -268,6 +268,19 @@ the PDFs are not.
 - Verify the term start date is correct
 - Try importing again if the calendar UI needs a refresh
 
+### Every class appears twice after generating a second file
+- Each generation mints fresh event UIDs, so a re-import adds a second copy instead of updating
+  the first
+- Importing the *same* downloaded file twice is safe; generating a new file and importing that is
+  what duplicates
+- Delete the calendar you imported into and import the new file into a fresh one. This is why the
+  in-app steps ask you to make a calendar for the term first
+
+### Google Calendar has no import option
+- Import is only available in Google Calendar on a desktop browser; the Android and iOS apps
+  cannot import `.ics` files at all
+- Download the file on your phone if that is where you are, then finish the import on a computer
+
 ### Recollection validation fails
 - Double-check the recollection date matches the weekday shown in your EAF
 - For example, if LASARE is on Tuesday, you must select a Tuesday date

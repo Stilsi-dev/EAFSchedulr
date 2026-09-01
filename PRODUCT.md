@@ -51,7 +51,11 @@ when DLSU changed it. Two things a neighboring tool could not truthfully copy:
 - **Session shape:** one uninterrupted sitting — upload, review, generate, download, import.
 - **Handoff:** the student finishes the job outside the app, in Google Calendar
   (Settings → Import & Export → Import Calendar). The app's last mile is a file, not a synced
-  calendar, so the import instructions are part of the product, not an afterthought.
+  calendar, so the import instructions are part of the product, not an afterthought. The success
+  screen carries the steps in full, above the schedule summary, and states the two constraints a
+  student cannot discover on their own: Google Calendar will not import from a phone, and the
+  import belongs on a calendar created for the term, so a corrected file can replace it by
+  deleting one calendar rather than hunting individual events.
 - **Calendar clients:** Google Calendar is the primary target, but `.ics` portability means
   Apple Calendar and Outlook users are served identically. This is deliberate.
 - **Term shape:** DLSU trimesters, typically 14 weeks (the default); the student sets the term
