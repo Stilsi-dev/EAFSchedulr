@@ -2,9 +2,10 @@
  * Analytics consent, and the bridge to the loader in `index.html`.
  *
  * Three states, not two. `unset` is the absence of the key and means the
- * student has not been asked yet - the only state that shows the consent bar.
- * The loader treats `unset` and `denied` identically, because neither may load
- * anything; only this side has to tell them apart, to decide whether to ask.
+ * student has not answered yet - the only state that shows the consent bar.
+ * The loader treats `unset` and `granted` identically, because analytics is on
+ * by default and only an explicit `denied` stops it; this side is the only one
+ * that has to tell those two apart, to decide whether to ask.
  *
  * The key and its values must match the `analyticsConsent` read in the inline
  * script in index.html.
@@ -26,7 +27,8 @@ export function readConsent(): Consent {
     return saved === "granted" || saved === "denied" ? saved : "unset";
   } catch {
     // Private mode or blocked storage. Nothing can be remembered, so the
-    // honest reading is that the student has not answered and nothing loads.
+    // honest reading is that the student has not answered - which now also
+    // means analytics is running, and the bar is shown so they can stop it.
     return "unset";
   }
 }

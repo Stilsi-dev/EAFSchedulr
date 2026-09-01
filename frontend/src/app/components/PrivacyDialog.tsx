@@ -59,7 +59,7 @@ function PrivacyDetails() {
       <section className="space-y-1.5">
         <h3 className="text-sm text-foreground">Google Analytics</h3>
         <p className="text-sm leading-relaxed text-muted-foreground">
-          The only third-party script on this page, and it loads only if you agree. It sets one cookie holding a random ID, which Google keeps for two years, and that is enough to count visits and tell us when something breaks. Your EAF is never part of it.
+          The only third-party script on this page, and it runs unless you switch it off below. It sets one cookie holding a random ID, which Google keeps for two years, and that is enough to count visits and tell us when something breaks. Your EAF is never part of it.
         </p>
       </section>
     </div>
@@ -69,7 +69,7 @@ function PrivacyDetails() {
 type PrivacyDialogProps = {
   open: boolean;
   onClose: () => void;
-  /** `unset` and `denied` both mean nothing has loaded, so both read as off. */
+  /** Analytics is on by default, so `unset` and `granted` both read as on. */
   consent: Consent;
   onConsentChange: (consent: "granted" | "denied") => void;
 };
@@ -226,7 +226,7 @@ export function PrivacyDialog({
       <label className="mt-5 flex cursor-pointer items-start gap-3 rounded-xl border border-card-inset-border bg-card-well p-4">
         <input
           type="checkbox"
-          checked={consent === "granted"}
+          checked={consent !== "denied"}
           onChange={(event) => onConsentChange(event.target.checked ? "granted" : "denied")}
           className="mt-0.5 h-5 w-5 shrink-0 accent-emerald-600"
         />
