@@ -811,6 +811,23 @@ export default function App() {
       // Revoked on a delay rather than immediately: some browsers abort a
       // download whose object URL is released in the same tick as the click.
       window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+
+      // Success was silent here. Both failure paths announced themselves and
+      // the one that worked said nothing, so a screen reader user got no
+      // confirmation the file had arrived - and the browser's own download
+      // indicator is not something the page can rely on being heard.
+      setStatusMessage("Downloaded. Next, import it into Google Calendar.");
+
+      // Only on the success path. Pulling the page down to the import steps
+      // while a download error is rendering above them would be perverse.
+      // Unlike the two scrolls above, this one honours reduced motion.
+      const reducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+      window.setTimeout(() => {
+        importStepsRef.current?.scrollIntoView({
+          behavior: reducedMotion ? "auto" : "smooth",
+          block: "start",
+        });
+      }, 300);
     } catch {
       setDownloadError(
         "Could not reach the app server. Your schedule is still here - try again.",
